@@ -425,6 +425,7 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'admin.ops.description'
     }
   },
+  { path: '/admin/request-details', name: 'AdminRequestDetails', component: () => import('@/views/admin/RequestDetailsView.vue'), meta: { requiresAuth: true, requiresAdmin: true, title: '请求明细' } },
   {
     path: '/admin/audit-logs',
     name: 'AdminAuditLogs',

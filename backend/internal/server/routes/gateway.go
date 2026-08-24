@@ -32,12 +32,19 @@ func RegisterGatewayRoutes(
 	settingService *service.SettingService,
 	compositeResolver *service.CompositeRouteResolver,
 	cfg *config.Config,
+	requestDetailServices ...*service.RequestDetailService,
 ) {
+	var requestDetails *service.RequestDetailService
+	if len(requestDetailServices) > 0 {
+		requestDetails = requestDetailServices[0]
+	}
 	bodyLimit := middleware.RequestBodyLimit(cfg.Gateway.MaxBodySize)
 	textBodyLimit := middleware.RequestBodyLimit(cfg.Gateway.TextMaxBodySize)
 	clientRequestID := middleware.ClientRequestID()
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
+	requestDetailCapture := middleware.RequestDetailCapture(requestDetails)
+	r.Use(requestDetailCapture)
 	compositeTarget := compositeTargetPlatformMiddleware(compositeResolver)
 	compositeGeminiTarget := compositeGeminiTargetPlatformMiddleware(compositeResolver)
 

@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -14,7 +15,8 @@ import (
 )
 
 type OpsHandler struct {
-	opsService *service.OpsService
+	opsService     *service.OpsService
+	requestDetails *service.RequestDetailService
 }
 
 // GetErrorLogByID returns ops error log detail.
@@ -68,8 +70,81 @@ func parseOpsViewParam(c *gin.Context) string {
 	}
 }
 
-func NewOpsHandler(opsService *service.OpsService) *OpsHandler {
-	return &OpsHandler{opsService: opsService}
+func NewOpsHandler(opsService *service.OpsService, requestDetails ...*service.RequestDetailService) *OpsHandler {
+	var details *service.RequestDetailService
+	if len(requestDetails) > 0 {
+		details = requestDetails[0]
+	}
+	return &OpsHandler{opsService: opsService, requestDetails: details}
+}
+
+// ListCapturedRequestDetails returns opt-in, short-retention request summaries.
+func (h *OpsHandler) ListCapturedRequestDetails(c *gin.Context) {
+	if h.requestDetails == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Request detail service not available")
+		return
+	}
+	page, pageSize := response.ParsePagination(c)
+	items, err := h.requestDetails.List(c.Request.Context(), service.RequestDetailQuery{Page: page, PageSize: pageSize, Model: strings.TrimSpace(c.Query("model")), StatusCode: strings.TrimSpace(c.Query("status_code")), APIKeyID: strings.TrimSpace(c.Query("api_key_id")), User: strings.TrimSpace(c.Query("user"))})
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to list request details")
+		return
+	}
+	response.Success(c, items)
+}
+
+func (h *OpsHandler) StreamCapturedRequestDetails(c *gin.Context) {
+	if h.requestDetails == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Request detail service not available")
+		return
+	}
+	bodyLimitKB, _ := strconv.Atoi(c.DefaultQuery("body_limit_kb", "256"))
+	events, unsubscribe := h.requestDetails.SubscribeLive(bodyLimitKB)
+	defer unsubscribe()
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("X-Accel-Buffering", "no")
+	c.Status(http.StatusOK)
+	c.Writer.Flush()
+	for {
+		select {
+		case <-c.Request.Context().Done():
+			return
+		case item, ok := <-events:
+			if !ok {
+				return
+			}
+			payload, err := json.Marshal(item)
+			if err != nil {
+				continue
+			}
+			_, _ = fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
+			c.Writer.Flush()
+		}
+	}
+}
+
+func (h *OpsHandler) GetRequestDetailConfig(c *gin.Context) {
+	cfg, err := h.requestDetails.Config(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to get request detail config")
+		return
+	}
+	response.Success(c, cfg)
+}
+
+func (h *OpsHandler) UpdateRequestDetailConfig(c *gin.Context) {
+	var cfg service.RequestDetailConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		response.BadRequest(c, "Invalid request detail config")
+		return
+	}
+	updated, err := h.requestDetails.UpdateConfig(c.Request.Context(), cfg)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	response.Success(c, updated)
 }
 
 // GetErrorLogs lists ops error logs.
