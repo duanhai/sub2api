@@ -480,6 +480,15 @@ describe('admin UsageTable topic summary column', () => {
 		expect(wrapper.text()).toContain('Docker update')
 		expect(wrapper.text()).toContain('Operations')
 		expect(wrapper.text()).toContain('Discusses Compose updates and downtime risk.')
+		const summary = wrapper.get('[data-testid="topic-summary"]')
+		expect(summary.classes()).toEqual(expect.arrayContaining([
+			'w-[320px]',
+			'min-w-[320px]',
+			'max-w-[320px]',
+			'overflow-hidden',
+			'whitespace-normal',
+		]))
+		expect(summary.get('.line-clamp-2').classes()).toContain('break-words')
 	})
 })
 

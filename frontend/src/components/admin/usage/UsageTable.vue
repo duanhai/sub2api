@@ -91,9 +91,14 @@
         </template>
 
         <template #cell-topic_summary="{ row }">
-          <div v-if="row.topic_summary?.status === 'completed'" class="max-w-[320px] text-xs" :title="row.topic_summary.summary || row.topic_summary.title">
+          <div
+            v-if="row.topic_summary?.status === 'completed'"
+            data-testid="topic-summary"
+            class="w-[320px] min-w-[320px] max-w-[320px] overflow-hidden whitespace-normal text-xs"
+            :title="row.topic_summary.summary || row.topic_summary.title"
+          >
             <div class="truncate font-medium text-gray-900 dark:text-white">{{ row.topic_summary.title }}</div>
-            <div class="mt-0.5 line-clamp-2 text-gray-500 dark:text-gray-400">
+            <div class="mt-0.5 line-clamp-2 break-words text-gray-500 dark:text-gray-400">
               <span v-if="row.topic_summary.category" class="mr-1 text-primary-600 dark:text-primary-400">{{ row.topic_summary.category }}</span>
               {{ row.topic_summary.summary }}
             </div>
