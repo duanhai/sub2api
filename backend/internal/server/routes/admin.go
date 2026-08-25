@@ -261,10 +261,7 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 
 		// Request drilldown (success + error)
 		ops.GET("/requests", h.Admin.Ops.ListRequestDetails)
-		ops.GET("/request-details", h.Admin.Ops.ListCapturedRequestDetails)
 		ops.GET("/request-details/live", h.Admin.Ops.StreamCapturedRequestDetails)
-		ops.GET("/request-details/config", h.Admin.Ops.GetRequestDetailConfig)
-		ops.PUT("/request-details/config", h.Admin.Ops.UpdateRequestDetailConfig)
 
 		// Indexed system logs
 		ops.GET("/system-logs", h.Admin.Ops.ListSystemLogs)

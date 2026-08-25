@@ -165,9 +165,8 @@ export interface CapturedRequestDetail {
   id: string; created_at: string; method: string; path: string; model?: string
   status_code: number; duration_ms: number; user_id?: number; api_key_id?: number
   group_id?: number | null; api_key_name?: string; user_email?: string; username?: string; request_body?: string
+  body_state: 'captured' | 'truncated' | 'not_applicable' | 'empty' | 'decode_failed'
 }
-export interface CapturedRequestDetailPage { items: CapturedRequestDetail[]; total: number; page: number; page_size: number; pages: number }
-export interface CapturedRequestDetailConfig { enabled: boolean; body_preview: boolean; retention_minutes: number; retention_hours?: number }
 
 export interface OpsLatencyHistogramBucket {
   range: string
@@ -1180,25 +1179,14 @@ export async function listRequestDetails(params: OpsRequestDetailsParams): Promi
   return data
 }
 
-export async function listCapturedRequestDetails(params: Record<string, unknown>): Promise<CapturedRequestDetailPage> {
-  const { data } = await apiClient.get<CapturedRequestDetailPage>('/admin/ops/request-details', { params })
-  return data
-}
-
-export async function getCapturedRequestDetailConfig(): Promise<CapturedRequestDetailConfig> {
-  const { data } = await apiClient.get<CapturedRequestDetailConfig>('/admin/ops/request-details/config')
-  return data
-}
-
-export async function updateCapturedRequestDetailConfig(config: CapturedRequestDetailConfig): Promise<CapturedRequestDetailConfig> {
-  const { data } = await apiClient.put<CapturedRequestDetailConfig>('/admin/ops/request-details/config', config)
-  return data
-}
-
 export async function streamCapturedRequestDetails(
   bodyLimitKB: 256 | 512,
   signal: AbortSignal,
-  onEvent: (detail: CapturedRequestDetail) => void
+  handlers: {
+    onConnected: () => void
+    onHeartbeat: () => void
+    onEvent: (detail: CapturedRequestDetail) => void
+  }
 ): Promise<void> {
   const token = localStorage.getItem('auth_token') || ''
   const response = await fetch(`${buildApiUrl('/admin/ops/request-details/live')}?body_limit_kb=${bodyLimitKB}`, {
@@ -1206,6 +1194,7 @@ export async function streamCapturedRequestDetails(
     signal
   })
   if (!response.ok || !response.body) throw new Error(`实时请求流连接失败 (${response.status})`)
+  handlers.onConnected()
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
@@ -1215,9 +1204,12 @@ export async function streamCapturedRequestDetails(
     buffer += decoder.decode(value, { stream: true })
     const blocks = buffer.split('\n\n'); buffer = blocks.pop() || ''
     for (const block of blocks) {
+      if (block.startsWith(': heartbeat')) { handlers.onHeartbeat(); continue }
       const data = block.split('\n').find(line => line.startsWith('data: '))?.slice(6)
       if (!data) continue
-      onEvent(JSON.parse(data) as CapturedRequestDetail)
+      const event = block.split('\n').find(line => line.startsWith('event: '))?.slice(7)
+      if (event === 'ready') { handlers.onConnected(); continue }
+      handlers.onEvent(JSON.parse(data) as CapturedRequestDetail)
     }
   }
 }

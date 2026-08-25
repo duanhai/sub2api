@@ -78,21 +78,6 @@ func NewOpsHandler(opsService *service.OpsService, requestDetails ...*service.Re
 	return &OpsHandler{opsService: opsService, requestDetails: details}
 }
 
-// ListCapturedRequestDetails returns opt-in, short-retention request summaries.
-func (h *OpsHandler) ListCapturedRequestDetails(c *gin.Context) {
-	if h.requestDetails == nil {
-		response.Error(c, http.StatusServiceUnavailable, "Request detail service not available")
-		return
-	}
-	page, pageSize := response.ParsePagination(c)
-	items, err := h.requestDetails.List(c.Request.Context(), service.RequestDetailQuery{Page: page, PageSize: pageSize, Model: strings.TrimSpace(c.Query("model")), StatusCode: strings.TrimSpace(c.Query("status_code")), APIKeyID: strings.TrimSpace(c.Query("api_key_id")), User: strings.TrimSpace(c.Query("user"))})
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to list request details")
-		return
-	}
-	response.Success(c, items)
-}
-
 func (h *OpsHandler) StreamCapturedRequestDetails(c *gin.Context) {
 	if h.requestDetails == nil {
 		response.Error(c, http.StatusServiceUnavailable, "Request detail service not available")
@@ -105,11 +90,17 @@ func (h *OpsHandler) StreamCapturedRequestDetails(c *gin.Context) {
 	c.Header("Cache-Control", "no-cache")
 	c.Header("X-Accel-Buffering", "no")
 	c.Status(http.StatusOK)
+	_, _ = fmt.Fprint(c.Writer, "event: ready\ndata: {}\n\n")
 	c.Writer.Flush()
+	heartbeat := time.NewTicker(15 * time.Second)
+	defer heartbeat.Stop()
 	for {
 		select {
 		case <-c.Request.Context().Done():
 			return
+		case <-heartbeat.C:
+			_, _ = fmt.Fprint(c.Writer, ": heartbeat\n\n")
+			c.Writer.Flush()
 		case item, ok := <-events:
 			if !ok {
 				return
@@ -122,29 +113,6 @@ func (h *OpsHandler) StreamCapturedRequestDetails(c *gin.Context) {
 			c.Writer.Flush()
 		}
 	}
-}
-
-func (h *OpsHandler) GetRequestDetailConfig(c *gin.Context) {
-	cfg, err := h.requestDetails.Config(c.Request.Context())
-	if err != nil {
-		response.Error(c, http.StatusInternalServerError, "Failed to get request detail config")
-		return
-	}
-	response.Success(c, cfg)
-}
-
-func (h *OpsHandler) UpdateRequestDetailConfig(c *gin.Context) {
-	var cfg service.RequestDetailConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		response.BadRequest(c, "Invalid request detail config")
-		return
-	}
-	updated, err := h.requestDetails.UpdateConfig(c.Request.Context(), cfg)
-	if err != nil {
-		response.BadRequest(c, err.Error())
-		return
-	}
-	response.Success(c, updated)
 }
 
 // GetErrorLogs lists ops error logs.

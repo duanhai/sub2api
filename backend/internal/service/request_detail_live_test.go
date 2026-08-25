@@ -1,14 +1,13 @@
 package service
 
 import (
-	"context"
 	"strings"
 	"testing"
 	"time"
 )
 
 func TestRequestDetailLiveSubscriptionPublishesWithoutRedis(t *testing.T) {
-	svc := NewRequestDetailService(nil, nil)
+	svc := NewRequestDetailService()
 	events, unsubscribe := svc.SubscribeLive(512)
 	defer unsubscribe()
 
@@ -16,11 +15,14 @@ func TestRequestDetailLiveSubscriptionPublishesWithoutRedis(t *testing.T) {
 		t.Fatalf("LiveBodyLimit() = %d, want %d", got, 512*1024)
 	}
 
-	svc.Capture(context.Background(), RequestDetail{ID: "req-1", RequestBody: strings.Repeat("x", 600*1024)})
+	svc.PublishLive(RequestDetail{ID: "req-1", RequestBody: strings.Repeat("x", 600*1024), BodyState: RequestBodyCaptured})
 	select {
 	case event := <-events:
 		if len(event.RequestBody) != 512*1024 {
 			t.Fatalf("body length = %d, want %d", len(event.RequestBody), 512*1024)
+		}
+		if event.BodyState != RequestBodyTruncated {
+			t.Fatalf("body state = %q, want %q", event.BodyState, RequestBodyTruncated)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for live event")
@@ -28,7 +30,7 @@ func TestRequestDetailLiveSubscriptionPublishesWithoutRedis(t *testing.T) {
 }
 
 func TestRequestDetailLiveSubscriptionDefaultsTo256KB(t *testing.T) {
-	svc := NewRequestDetailService(nil, nil)
+	svc := NewRequestDetailService()
 	_, unsubscribe := svc.SubscribeLive(999)
 	if got := svc.LiveBodyLimit(); got != 256*1024 {
 		t.Fatalf("LiveBodyLimit() = %d, want %d", got, 256*1024)
