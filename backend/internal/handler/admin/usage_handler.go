@@ -215,13 +215,20 @@ func (h *UsageHandler) List(c *gin.Context) {
 	}
 
 	out := make([]dto.AdminUsageLog, 0, len(records))
-	requestIDs := make([]string, 0, len(records))
+	topicLookups := make([]securityaudit.TopicSummaryUsageLookup, 0, len(records))
 	for i := range records {
-		requestIDs = append(requestIDs, records[i].RequestID)
+		sessionID := ""
+		if records[i].SessionID != nil {
+			sessionID = *records[i].SessionID
+		}
+		topicLookups = append(topicLookups, securityaudit.TopicSummaryUsageLookup{
+			RequestID: records[i].RequestID, APIKeyID: records[i].APIKeyID,
+			SessionID: sessionID, CreatedAt: records[i].CreatedAt,
+		})
 	}
 	topicSummaries := map[string]securityaudit.TopicSummary{}
 	if h.topicSummaries != nil && h.topicSummaries.Enabled() {
-		if summaries, summaryErr := h.topicSummaries.GetMany(c.Request.Context(), requestIDs); summaryErr == nil {
+		if summaries, summaryErr := h.topicSummaries.GetForUsage(c.Request.Context(), topicLookups); summaryErr == nil {
 			topicSummaries = summaries
 		} else {
 			logger.LegacyPrintf("handler.admin.usage", "load topic summaries failed: %v", summaryErr)

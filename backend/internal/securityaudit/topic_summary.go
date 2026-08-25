@@ -23,6 +23,7 @@ import (
 const (
 	TopicSummaryInternalHeader = topicsummary.HeaderName
 	topicSummaryKeyPrefix      = "sub2api:topic_summary:request:"
+	topicSummarySessionPrefix  = "sub2api:topic_summary:session:"
 	topicSummaryTTL            = 24 * time.Hour
 	topicSummaryInterval       = 5 * time.Minute
 	topicSummaryInputRunes     = 2000
@@ -37,6 +38,13 @@ type TopicSummary struct {
 	Summary     string    `json:"summary,omitempty"`
 	Status      string    `json:"status"`
 	GeneratedAt time.Time `json:"generated_at"`
+}
+
+type TopicSummaryUsageLookup struct {
+	RequestID string
+	APIKeyID  int64
+	SessionID string
+	CreatedAt time.Time
 }
 
 type topicSummaryConfig struct {
@@ -145,7 +153,7 @@ func (s *TopicSummaryService) Observe(req Request) {
 		summary := *state.latest
 		delete(state.pendingIDs, req.RequestID)
 		s.mu.Unlock()
-		s.persistAsync([]string{req.RequestID}, summary)
+		s.persistAsync(sessionKey, []string{req.RequestID}, summary)
 		return
 	}
 	if state.pending || now.Sub(state.lastStarted) < topicSummaryInterval {
@@ -192,7 +200,7 @@ func (s *TopicSummaryService) finishJob(sessionKey string, summary TopicSummary)
 	state.pending = false
 	state.latest = &summary
 	s.mu.Unlock()
-	s.persist(requestIDs, summary)
+	s.persist(sessionKey, requestIDs, summary)
 }
 
 func (s *TopicSummaryService) distill(input string) (TopicSummary, error) {
@@ -305,19 +313,54 @@ func (s *TopicSummaryService) GetMany(ctx context.Context, requestIDs []string) 
 	return result, nil
 }
 
-func (s *TopicSummaryService) persistAsync(requestIDs []string, summary TopicSummary) {
+func (s *TopicSummaryService) GetForUsage(ctx context.Context, lookups []TopicSummaryUsageLookup) (map[string]TopicSummary, error) {
+	result := make(map[string]TopicSummary)
+	if s == nil || s.redis == nil || len(lookups) == 0 {
+		return result, nil
+	}
+	keys := make([]string, 0, len(lookups)*2)
+	for _, lookup := range lookups {
+		keys = append(keys, topicSummaryKeyPrefix+strings.TrimSpace(lookup.RequestID))
+		sessionKey := topicSummarySessionKey(Request{APIKeyID: lookup.APIKeyID, SessionID: lookup.SessionID}, lookup.CreatedAt)
+		keys = append(keys, topicSummarySessionPrefix+sessionKey)
+	}
+	values, err := s.redis.MGet(ctx, keys...).Result()
+	if err != nil {
+		return result, err
+	}
+	for index, lookup := range lookups {
+		requestID := strings.TrimSpace(lookup.RequestID)
+		if requestID == "" {
+			continue
+		}
+		for _, value := range values[index*2 : index*2+2] {
+			text, ok := value.(string)
+			if !ok || text == "" {
+				continue
+			}
+			var summary TopicSummary
+			if json.Unmarshal([]byte(text), &summary) == nil {
+				result[requestID] = summary
+				break
+			}
+		}
+	}
+	return result, nil
+}
+
+func (s *TopicSummaryService) persistAsync(sessionKey string, requestIDs []string, summary TopicSummary) {
 	select {
 	case s.queue <- struct{}{}:
 		go func() {
 			defer func() { <-s.queue }()
-			s.persist(requestIDs, summary)
+			s.persist(sessionKey, requestIDs, summary)
 		}()
 	default:
 	}
 }
 
-func (s *TopicSummaryService) persist(requestIDs []string, summary TopicSummary) {
-	if s == nil || s.redis == nil || len(requestIDs) == 0 {
+func (s *TopicSummaryService) persist(sessionKey string, requestIDs []string, summary TopicSummary) {
+	if s == nil || s.redis == nil || (len(requestIDs) == 0 && sessionKey == "") {
 		return
 	}
 	encoded, err := json.Marshal(summary)
@@ -327,6 +370,9 @@ func (s *TopicSummaryService) persist(requestIDs []string, summary TopicSummary)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_, _ = s.redis.Pipelined(ctx, func(pipe redis.Pipeliner) error {
+		if sessionKey != "" {
+			pipe.Set(ctx, topicSummarySessionPrefix+sessionKey, encoded, topicSummaryTTL)
+		}
 		for _, requestID := range requestIDs {
 			if requestID = strings.TrimSpace(requestID); requestID != "" {
 				pipe.Set(ctx, topicSummaryKeyPrefix+requestID, encoded, topicSummaryTTL)

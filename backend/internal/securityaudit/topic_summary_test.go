@@ -56,6 +56,11 @@ func TestTopicSummaryServiceDistillsOncePerSessionAndExpires(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "Docker 更新", summaries["req-1"].Title)
 	require.Equal(t, "completed", summaries["req-2"].Status)
+	usageSummaries, err := service.GetForUsage(t.Context(), []TopicSummaryUsageLookup{{
+		RequestID: "client:different-request-id", APIKeyID: 7, SessionID: "session-1", CreatedAt: fixedNow,
+	}})
+	require.NoError(t, err)
+	require.Equal(t, "Docker 更新", usageSummaries["client:different-request-id"].Title)
 
 	redisServer.FastForward(topicSummaryTTL + time.Second)
 	summaries, err = service.GetMany(t.Context(), []string{"req-1", "req-2"})
