@@ -59,7 +59,7 @@ func (s *RequestDetailService) LiveBodyLimit() int {
 }
 
 func (s *RequestDetailService) SubscribeLive(bodyLimitKB int) (<-chan RequestDetail, func()) {
-	if bodyLimitKB != 512 {
+	if bodyLimitKB != 512 && bodyLimitKB != 1024 {
 		bodyLimitKB = 256
 	}
 	ch := make(chan RequestDetail, 64)

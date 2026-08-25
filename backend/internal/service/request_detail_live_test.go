@@ -40,3 +40,13 @@ func TestRequestDetailLiveSubscriptionDefaultsTo256KB(t *testing.T) {
 		t.Fatalf("LiveBodyLimit() after unsubscribe = %d, want 0", got)
 	}
 }
+
+func TestRequestDetailLiveSubscriptionAllows1MB(t *testing.T) {
+	svc := NewRequestDetailService()
+	_, unsubscribe := svc.SubscribeLive(1024)
+	defer unsubscribe()
+
+	if got := svc.LiveBodyLimit(); got != 1024*1024 {
+		t.Fatalf("LiveBodyLimit() = %d, want %d", got, 1024*1024)
+	}
+}

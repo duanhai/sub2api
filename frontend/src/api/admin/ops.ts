@@ -1180,7 +1180,7 @@ export async function listRequestDetails(params: OpsRequestDetailsParams): Promi
 }
 
 export async function streamCapturedRequestDetails(
-  bodyLimitKB: 256 | 512,
+  bodyLimitKB: 256 | 512 | 1024,
   signal: AbortSignal,
   handlers: {
     onConnected: () => void

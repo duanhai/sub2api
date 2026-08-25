@@ -4,7 +4,7 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import { streamCapturedRequestDetails, type CapturedRequestDetail } from '@/api/admin/ops'
 
-type BodyLimit = 256 | 512
+type BodyLimit = 256 | 512 | 1024
 type ConnectionState = 'connecting' | 'connected' | 'disconnected'
 
 const liveRows = ref<CapturedRequestDetail[]>([])
@@ -82,7 +82,7 @@ onUnmounted(stopLive)
       <div class="card flex flex-wrap items-center gap-4 p-5">
         <span class="text-sm font-medium">正文上限</span>
         <div class="inline-flex overflow-hidden rounded border border-gray-200 dark:border-dark-600">
-          <button v-for="limit in ([256, 512] as const)" :key="limit" type="button" class="px-4 py-2 text-sm" :class="bodyLimitKB === limit ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 dark:bg-dark-800 dark:text-gray-300'" @click="bodyLimitKB = limit">{{ limit }} KB</button>
+          <button v-for="limit in ([256, 512, 1024] as const)" :key="limit" type="button" class="px-4 py-2 text-sm" :class="bodyLimitKB === limit ? 'bg-primary-600 text-white' : 'bg-white text-gray-600 dark:bg-dark-800 dark:text-gray-300'" @click="bodyLimitKB = limit">{{ limit === 1024 ? '1 MB' : `${limit} KB` }}</button>
         </div>
         <span class="inline-flex items-center gap-2 text-sm" :class="connectionState === 'connected' ? 'text-green-600' : connectionState === 'connecting' ? 'text-amber-600' : 'text-red-600'">
           <span class="h-2 w-2 rounded-full bg-current"></span>{{ connectionLabel }}
