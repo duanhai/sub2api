@@ -90,6 +90,18 @@
           </div>
         </template>
 
+        <template #cell-topic_summary="{ row }">
+          <div v-if="row.topic_summary?.status === 'completed'" class="max-w-[320px] text-xs" :title="row.topic_summary.summary || row.topic_summary.title">
+            <div class="truncate font-medium text-gray-900 dark:text-white">{{ row.topic_summary.title }}</div>
+            <div class="mt-0.5 line-clamp-2 text-gray-500 dark:text-gray-400">
+              <span v-if="row.topic_summary.category" class="mr-1 text-primary-600 dark:text-primary-400">{{ row.topic_summary.category }}</span>
+              {{ row.topic_summary.summary }}
+            </div>
+          </div>
+          <span v-else-if="row.topic_summary?.status === 'failed'" class="text-xs text-red-500">{{ t('admin.usage.topicSummaryFailed') }}</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-reasoning_effort="{ row }">
           <span class="text-sm text-gray-900 dark:text-white">
             {{ formatReasoningEffort(row.reasoning_effort) }}

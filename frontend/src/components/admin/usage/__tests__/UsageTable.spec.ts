@@ -57,7 +57,8 @@ const messages: Record<string, string> = {
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per request',
   'admin.usage.billingModeImage': 'Image',
-	'admin.usage.requestIdCopied': 'Request ID copied',
+  'admin.usage.requestIdCopied': 'Request ID copied',
+	'admin.usage.topicSummaryFailed': 'Generation failed',
 	'keys.copied': 'Copied',
 	'keys.copyToClipboard': 'Copy to clipboard',
 	'common.copyFailed': 'Copy failed',
@@ -84,6 +85,7 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
+		<slot name="cell-topic_summary" :row="row" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
         <slot name="cell-cost" :row="row" />
@@ -453,6 +455,32 @@ describe('admin UsageTable request ID column', () => {
     expect(writeText).toHaveBeenCalledWith('req-admin-visible-id')
     expect(appStoreMocks.showSuccess).toHaveBeenCalledWith('Request ID copied')
   })
+})
+
+describe('admin UsageTable topic summary column', () => {
+	it('renders the distilled title, category, and summary', () => {
+		const wrapper = mount(UsageTable, {
+			props: {
+				data: [{
+					...baseImageRow,
+					topic_summary: {
+						title: 'Docker update',
+						category: 'Operations',
+						summary: 'Discusses Compose updates and downtime risk.',
+						status: 'completed',
+						generated_at: '2026-08-25T10:00:00Z',
+					},
+				}],
+				loading: false,
+				columns: [{ key: 'topic_summary', label: 'Topic summary' }],
+			},
+			global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+		})
+
+		expect(wrapper.text()).toContain('Docker update')
+		expect(wrapper.text()).toContain('Operations')
+		expect(wrapper.text()).toContain('Discusses Compose updates and downtime risk.')
+	})
 })
 
 describe('admin UsageTable IP geolocation batch toolbar', () => {

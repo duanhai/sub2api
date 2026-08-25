@@ -13,6 +13,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
@@ -25,6 +26,7 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	topicSummaries *securityaudit.TopicSummaryService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -33,12 +35,18 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	topicSummaryServices ...*securityaudit.TopicSummaryService,
 ) *UsageHandler {
+	var topicSummaries *securityaudit.TopicSummaryService
+	if len(topicSummaryServices) > 0 {
+		topicSummaries = topicSummaryServices[0]
+	}
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		topicSummaries: topicSummaries,
 	}
 }
 
@@ -207,8 +215,27 @@ func (h *UsageHandler) List(c *gin.Context) {
 	}
 
 	out := make([]dto.AdminUsageLog, 0, len(records))
+	requestIDs := make([]string, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		requestIDs = append(requestIDs, records[i].RequestID)
+	}
+	topicSummaries := map[string]securityaudit.TopicSummary{}
+	if h.topicSummaries != nil && h.topicSummaries.Enabled() {
+		if summaries, summaryErr := h.topicSummaries.GetMany(c.Request.Context(), requestIDs); summaryErr == nil {
+			topicSummaries = summaries
+		} else {
+			logger.LegacyPrintf("handler.admin.usage", "load topic summaries failed: %v", summaryErr)
+		}
+	}
+	for i := range records {
+		item := dto.UsageLogFromServiceAdmin(&records[i])
+		if summary, ok := topicSummaries[records[i].RequestID]; ok {
+			item.TopicSummary = &dto.TopicSummary{
+				Title: summary.Title, Category: summary.Category, Summary: summary.Summary,
+				Status: summary.Status, GeneratedAt: summary.GeneratedAt,
+			}
+		}
+		out = append(out, *item)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }

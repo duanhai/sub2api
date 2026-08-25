@@ -517,6 +517,8 @@ export default {
       group: '分组',
       requestId: '请求ID',
       requestIdCopied: '请求ID已复制',
+	  topicSummary: '话题摘要',
+	  topicSummaryFailed: '生成失败',
       allModels: '全部模型',
       allAccounts: '全部账户',
       allGroups: '全部分组',

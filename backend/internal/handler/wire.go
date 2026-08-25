@@ -139,6 +139,20 @@ func ProvideOpenAIGatewayHandler(
 	return h
 }
 
+func ProvideAdminUsageHandler(
+	usageService *service.UsageService,
+	apiKeyService *service.APIKeyService,
+	adminService service.AdminService,
+	cleanupService *service.UsageCleanupService,
+	topicSummaries *securityaudit.TopicSummaryService,
+) *admin.UsageHandler {
+	return admin.NewUsageHandler(usageService, apiKeyService, adminService, cleanupService, topicSummaries)
+}
+
+func ProvideAdminOpsHandler(opsService *service.OpsService, requestDetails *service.RequestDetailService) *admin.OpsHandler {
+	return admin.NewOpsHandler(opsService, requestDetails)
+}
+
 func ProvideBatchImageHandler(
 	batchService *service.BatchImagePublicService,
 	download *service.BatchImageDownloadService,
@@ -265,10 +279,10 @@ var ProviderSet = wire.NewSet(
 	admin.NewRedeemHandler,
 	admin.NewPromoHandler,
 	ProvideAdminSettingHandler,
-	admin.NewOpsHandler,
+	ProvideAdminOpsHandler,
 	ProvideSystemHandler,
 	admin.NewSubscriptionHandler,
-	admin.NewUsageHandler,
+	ProvideAdminUsageHandler,
 	admin.NewUserAttributeHandler,
 	admin.NewErrorPassthroughHandler,
 	admin.NewTLSFingerprintProfileHandler,

@@ -5,11 +5,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
+	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,17 +22,41 @@ type adminUsageRepoCapture struct {
 	listParams   pagination.PaginationParams
 	listFilters  usagestats.UsageLogFilters
 	statsFilters usagestats.UsageLogFilters
+	records      []service.UsageLog
 }
 
 func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagination.PaginationParams, filters usagestats.UsageLogFilters) ([]service.UsageLog, *pagination.PaginationResult, error) {
 	s.listParams = params
 	s.listFilters = filters
-	return []service.UsageLog{}, &pagination.PaginationResult{
-		Total:    0,
+	return s.records, &pagination.PaginationResult{
+		Total:    int64(len(s.records)),
 		Page:     params.Page,
 		PageSize: params.PageSize,
 		Pages:    0,
 	}, nil
+}
+
+func TestAdminUsageListIncludesTopicSummaryFromRedis(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+	t.Setenv("OPENAI_BASE_URL", "https://example.test/v1")
+	redisServer := miniredis.RunT(t)
+	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
+	t.Cleanup(func() { _ = redisClient.Close() })
+	require.NoError(t, redisClient.Set(t.Context(), "sub2api:topic_summary:request:req-topic", `{"title":"Docker 更新","category":"运维部署","summary":"讨论不停机更新","status":"completed","generated_at":"2026-08-25T10:00:00Z"}`, time.Hour).Err())
+
+	repo := &adminUsageRepoCapture{records: []service.UsageLog{{RequestID: "req-topic", Model: "gpt-test"}}}
+	usageSvc := service.NewUsageService(repo, nil, nil, nil)
+	handler := NewUsageHandler(usageSvc, nil, nil, nil, securityaudit.NewTopicSummaryService(redisClient))
+	router := gin.New()
+	router.GET("/admin/usage", handler.List)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), `"topic_summary"`)
+	require.Contains(t, rec.Body.String(), `"Docker 更新"`)
 }
 
 func (s *adminUsageRepoCapture) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {

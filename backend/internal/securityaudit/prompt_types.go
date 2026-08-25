@@ -81,6 +81,9 @@ type Request struct {
 	Model      string
 	Body       []byte
 	Stage      string
+	SessionID  string
+
+	TopicInternalToken string
 }
 
 func (r Request) Clone() Request {

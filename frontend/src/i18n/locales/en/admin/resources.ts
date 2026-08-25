@@ -520,6 +520,8 @@ export default {
       group: 'Group',
       requestId: 'Request ID',
       requestIdCopied: 'Request ID copied',
+	  topicSummary: 'Topic summary',
+	  topicSummaryFailed: 'Generation failed',
       allModels: 'All Models',
       allAccounts: 'All Accounts',
       allGroups: 'All Groups',

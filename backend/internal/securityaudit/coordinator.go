@@ -20,15 +20,23 @@ type PromptEngine interface {
 type Coordinator struct {
 	legacy LegacyEngine
 	prompt PromptEngine
+	topics *TopicSummaryService
 }
 
 func NewCoordinator(legacy LegacyEngine, prompt PromptEngine) *Coordinator {
 	return &Coordinator{legacy: legacy, prompt: prompt}
 }
 
+func NewCoordinatorWithTopicSummary(legacy LegacyEngine, prompt PromptEngine, topics *TopicSummaryService) *Coordinator {
+	return &Coordinator{legacy: legacy, prompt: prompt, topics: topics}
+}
+
 func (c *Coordinator) Check(ctx context.Context, req Request) Decision {
 	if c == nil {
 		return allowDecision(nil, nil)
+	}
+	if c.topics != nil {
+		c.topics.Observe(req)
 	}
 	mode := ModeOff
 	if c.prompt != nil {

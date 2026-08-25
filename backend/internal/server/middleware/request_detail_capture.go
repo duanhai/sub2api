@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/topicsummary"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/klauspost/compress/zstd"
@@ -86,7 +87,7 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 		if details != nil {
 			bodyLimit = details.LiveBodyLimit()
 		}
-		captureActive := bodyLimit > 0
+		captureActive := bodyLimit > 0 && !topicsummary.IsInternalRequest(c.Request.Header)
 		originalEncoding := c.GetHeader("Content-Encoding")
 		if captureActive && c.Request.Body != nil && c.Request.Method != http.MethodGet {
 			body = &requestDetailBody{ReadCloser: c.Request.Body, limit: bodyLimit}

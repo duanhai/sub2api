@@ -1704,6 +1704,13 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  topic_summary?: {
+    title?: string
+    category?: string
+    summary?: string
+    status: 'completed' | 'failed'
+    generated_at: string
+  }
   upstream_model?: string | null
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
