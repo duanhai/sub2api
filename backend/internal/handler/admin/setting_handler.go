@@ -11,6 +11,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
+	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -62,6 +63,7 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	topicSummaryService      *securityaudit.TopicSummaryService
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -96,6 +98,10 @@ func (h *SettingHandler) SetAliyunCaptchaService(aliyunCaptchaService *service.A
 func (h *SettingHandler) SetStepUpDeps(totpService *service.TotpService, userService *service.UserService) {
 	h.totpService = totpService
 	h.userService = userService
+}
+
+func (h *SettingHandler) SetTopicSummaryService(topicSummaryService *securityaudit.TopicSummaryService) {
+	h.topicSummaryService = topicSummaryService
 }
 
 // GetSettings 获取所有系统设置

@@ -591,6 +591,8 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		adminSettings.PUT("/web-search-emulation", h.Admin.Setting.UpdateWebSearchEmulationConfig)
 		adminSettings.POST("/web-search-emulation/test", h.Admin.Setting.TestWebSearchEmulation)
 		adminSettings.POST("/web-search-emulation/reset-usage", h.Admin.Setting.ResetWebSearchUsage)
+		adminSettings.GET("/topic-summary", h.Admin.Setting.GetTopicSummarySettings)
+		adminSettings.PUT("/topic-summary", h.Admin.Setting.UpdateTopicSummarySettings)
 	}
 }
 

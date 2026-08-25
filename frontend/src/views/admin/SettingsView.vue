@@ -6987,6 +6987,116 @@
 	        <!-- Tab: Features (功能开关) -->
         <div v-show="activeTab === 'features'" class="space-y-6">
 
+        <div class="card" data-testid="topic-summary-settings">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.topicSummary.title') }}
+            </h2>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between gap-4">
+              <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {{ t('admin.settings.features.topicSummary.enabled') }}
+              </label>
+              <Toggle
+                v-model="topicSummaryForm.enabled"
+                data-testid="topic-summary-enabled"
+                :disabled="topicSummaryLoading || topicSummarySaving"
+              />
+            </div>
+
+            <div class="grid gap-4 lg:grid-cols-2">
+              <div>
+                <label for="topic-summary-base-url" class="input-label">
+                  {{ t('admin.settings.features.topicSummary.baseUrl') }}
+                </label>
+                <input
+                  id="topic-summary-base-url"
+                  v-model.trim="topicSummaryForm.base_url"
+                  type="url"
+                  class="input"
+                  data-testid="topic-summary-base-url"
+                  placeholder="https://example.com"
+                  :disabled="topicSummaryLoading || topicSummarySaving"
+                />
+              </div>
+              <div>
+                <label for="topic-summary-model" class="input-label">
+                  {{ t('admin.settings.features.topicSummary.model') }}
+                </label>
+                <input
+                  id="topic-summary-model"
+                  v-model.trim="topicSummaryForm.model"
+                  type="text"
+                  class="input"
+                  data-testid="topic-summary-model"
+                  placeholder="gpt-5.6-luna"
+                  :disabled="topicSummaryLoading || topicSummarySaving"
+                />
+              </div>
+            </div>
+
+            <div>
+              <div class="mb-1 flex items-center justify-between gap-3">
+                <label for="topic-summary-api-key" class="input-label mb-0">
+                  {{ t('admin.settings.features.topicSummary.apiKey') }}
+                </label>
+                <span
+                  v-if="topicSummaryForm.clear_api_key"
+                  class="text-xs font-medium text-amber-600 dark:text-amber-400"
+                >
+                  {{ t('admin.settings.features.topicSummary.pendingClear') }}
+                </span>
+                <span
+                  v-else-if="topicSummaryForm.api_key_configured"
+                  class="text-xs font-medium text-emerald-600 dark:text-emerald-400"
+                >
+                  {{ t('admin.settings.features.topicSummary.configured') }}
+                </span>
+              </div>
+              <div class="flex min-w-0 items-center gap-2">
+                <input
+                  id="topic-summary-api-key"
+                  v-model="topicSummaryForm.api_key"
+                  type="password"
+                  class="input min-w-0 flex-1"
+                  data-testid="topic-summary-api-key"
+                  autocomplete="new-password"
+                  spellcheck="false"
+                  :placeholder="topicSummaryForm.api_key_configured
+                    ? t('admin.settings.features.topicSummary.keyUnchanged')
+                    : t('admin.settings.features.topicSummary.keyPlaceholder')"
+                  :disabled="topicSummaryLoading || topicSummarySaving"
+                  @input="topicSummaryForm.clear_api_key = false"
+                />
+                <button
+                  v-if="topicSummaryForm.api_key_configured || topicSummaryForm.api_key"
+                  type="button"
+                  class="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-md border border-gray-200 text-gray-500 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:opacity-50 dark:border-dark-600 dark:hover:border-red-800 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                  data-testid="topic-summary-clear-key"
+                  :title="t('admin.settings.features.topicSummary.clearKey')"
+                  :disabled="topicSummaryLoading || topicSummarySaving"
+                  @click="clearTopicSummaryAPIKey"
+                >
+                  <Icon name="trash" size="sm" />
+                </button>
+              </div>
+            </div>
+
+            <div class="flex justify-end">
+              <button
+                type="button"
+                class="btn btn-primary"
+                data-testid="topic-summary-save"
+                :disabled="topicSummaryLoading || topicSummarySaving"
+                @click="saveTopicSummarySettings"
+              >
+                {{ topicSummarySaving ? t('common.saving') : t('common.save') }}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
@@ -8930,6 +9040,17 @@ const adminApiKeyMasked = ref("");
 const adminApiKeyOperating = ref(false);
 const newAdminApiKey = ref("");
 const subscriptionGroups = ref<AdminGroup[]>([]);
+
+const topicSummaryLoading = ref(true);
+const topicSummarySaving = ref(false);
+const topicSummaryForm = reactive({
+  enabled: false,
+  base_url: "",
+  model: "gpt-5.6-luna",
+  api_key: "",
+  api_key_configured: false,
+  clear_api_key: false,
+});
 
 // Upstream billing probe state
 const upstreamBillingProbeLoading = ref(true);
@@ -11709,6 +11830,69 @@ function copyNewKey() {
     });
 }
 
+async function loadTopicSummarySettings() {
+  topicSummaryLoading.value = true;
+  try {
+    const settings = await adminAPI.settings.getTopicSummarySettings();
+    Object.assign(topicSummaryForm, settings, {
+      api_key: "",
+      clear_api_key: false,
+    });
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.features.topicSummary.loadFailed"),
+      ),
+    );
+  } finally {
+    topicSummaryLoading.value = false;
+  }
+}
+
+function clearTopicSummaryAPIKey() {
+  topicSummaryForm.api_key = "";
+  topicSummaryForm.api_key_configured = false;
+  topicSummaryForm.clear_api_key = true;
+}
+
+async function saveTopicSummarySettings() {
+  if (
+    topicSummaryForm.enabled &&
+    (!topicSummaryForm.base_url.trim() ||
+      !topicSummaryForm.model.trim() ||
+      (!topicSummaryForm.api_key.trim() &&
+        !topicSummaryForm.api_key_configured))
+  ) {
+    appStore.showError(t("admin.settings.features.topicSummary.incomplete"));
+    return;
+  }
+  topicSummarySaving.value = true;
+  try {
+    const updated = await adminAPI.settings.updateTopicSummarySettings({
+      enabled: topicSummaryForm.enabled,
+      base_url: topicSummaryForm.base_url.trim(),
+      model: topicSummaryForm.model.trim(),
+      api_key: topicSummaryForm.api_key.trim() || undefined,
+      clear_api_key: topicSummaryForm.clear_api_key || undefined,
+    });
+    Object.assign(topicSummaryForm, updated, {
+      api_key: "",
+      clear_api_key: false,
+    });
+    appStore.showSuccess(t("admin.settings.features.topicSummary.saved"));
+  } catch (error: unknown) {
+    appStore.showError(
+      extractApiErrorMessage(
+        error,
+        t("admin.settings.features.topicSummary.saveFailed"),
+      ),
+    );
+  } finally {
+    topicSummarySaving.value = false;
+  }
+}
+
 async function loadUpstreamBillingProbeSettings() {
   upstreamBillingProbeLoading.value = true;
   try {
@@ -12517,6 +12701,7 @@ onMounted(() => {
   loadSettings();
   loadSubscriptionGroups();
   loadAdminApiKey();
+  loadTopicSummarySettings();
   loadUpstreamBillingProbeSettings();
   loadOllamaCloudUsageSettings();
   loadOverloadCooldownSettings();

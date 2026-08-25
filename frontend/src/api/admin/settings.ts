@@ -1552,6 +1552,38 @@ export async function resetWebSearchUsage(payload: {
   );
 }
 
+export interface TopicSummarySettings {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  api_key_configured: boolean;
+}
+
+export interface UpdateTopicSummarySettings {
+  enabled: boolean;
+  base_url: string;
+  model: string;
+  api_key?: string;
+  clear_api_key?: boolean;
+}
+
+export async function getTopicSummarySettings(): Promise<TopicSummarySettings> {
+  const { data } = await apiClient.get<TopicSummarySettings>(
+    "/admin/settings/topic-summary",
+  );
+  return data;
+}
+
+export async function updateTopicSummarySettings(
+  settings: UpdateTopicSummarySettings,
+): Promise<TopicSummarySettings> {
+  const { data } = await apiClient.put<TopicSummarySettings>(
+    "/admin/settings/topic-summary",
+    settings,
+  );
+  return data;
+}
+
 export const settingsAPI = {
   getSettings,
   updateSettings,
@@ -1581,6 +1613,8 @@ export const settingsAPI = {
   updateWebSearchEmulationConfig,
   testWebSearchEmulation,
   resetWebSearchUsage,
+  getTopicSummarySettings,
+  updateTopicSummarySettings,
 };
 
 export default settingsAPI;

@@ -14,6 +14,8 @@ const {
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
   getAdminApiKey,
+  getTopicSummarySettings,
+  updateTopicSummarySettings,
   getOverloadCooldownSettings,
   getRateLimit429CooldownSettings,
   updateRateLimit429CooldownSettings,
@@ -42,6 +44,18 @@ const {
   getWebSearchEmulationConfig: vi.fn(),
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
+  getTopicSummarySettings: vi.fn().mockResolvedValue({
+    enabled: true,
+    base_url: "https://summary.example",
+    model: "gpt-5.6-luna",
+    api_key_configured: true,
+  }),
+  updateTopicSummarySettings: vi.fn().mockImplementation(async (payload) => ({
+    enabled: payload.enabled,
+    base_url: payload.base_url,
+    model: payload.model,
+    api_key_configured: !payload.clear_api_key,
+  })),
   getOverloadCooldownSettings: vi.fn(),
   getRateLimit429CooldownSettings: vi.fn(),
   updateRateLimit429CooldownSettings: vi.fn(),
@@ -89,6 +103,8 @@ vi.mock("@/api", () => ({
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,
       getAdminApiKey,
+      getTopicSummarySettings,
+      updateTopicSummarySettings,
       getOverloadCooldownSettings,
       getRateLimit429CooldownSettings,
       updateRateLimit429CooldownSettings,
@@ -593,6 +609,16 @@ async function openGatewayTab(wrapper: ReturnType<typeof mountView>) {
   await flushPromises();
 }
 
+async function openFeaturesTab(wrapper: ReturnType<typeof mountView>) {
+  const featuresTabButton = wrapper
+    .findAll("button")
+    .find((node) => node.text().includes("admin.settings.tabs.features"));
+
+  expect(featuresTabButton).toBeDefined();
+  await featuresTabButton?.trigger("click");
+  await flushPromises();
+}
+
 async function openUsersTab(wrapper: ReturnType<typeof mountView>) {
   const usersTabButton = wrapper
     .findAll("button")
@@ -622,6 +648,52 @@ describe("admin SettingsView email domain quota copy", () => {
     expect(zhQuotaHint).toContain("关闭时非白名单域名直接拒绝");
     expect(enQuotaHint).toContain("one account");
     expect(enQuotaHint).toContain("When disabled");
+  });
+});
+
+describe("admin SettingsView topic summary settings", () => {
+  it("loads provider status and saves pasted configuration without exposing the key", async () => {
+    getTopicSummarySettings.mockClear();
+    updateTopicSummarySettings.mockClear();
+    getProviders.mockResolvedValueOnce({ data: [] });
+    const wrapper = mountView();
+
+    await flushPromises();
+    await openFeaturesTab(wrapper);
+
+    expect(getTopicSummarySettings).toHaveBeenCalledTimes(1);
+    expect(
+      (wrapper.get('[data-testid="topic-summary-base-url"]').element as HTMLInputElement)
+        .value,
+    ).toBe("https://summary.example");
+    expect(
+      (wrapper.get('[data-testid="topic-summary-api-key"]').element as HTMLInputElement)
+        .value,
+    ).toBe("");
+
+    await wrapper
+      .get('[data-testid="topic-summary-base-url"]')
+      .setValue("https://panel.example");
+    await wrapper
+      .get('[data-testid="topic-summary-model"]')
+      .setValue("gpt-5.6-luna");
+    await wrapper
+      .get('[data-testid="topic-summary-api-key"]')
+      .setValue("sk-panel-test");
+    await wrapper.get('[data-testid="topic-summary-save"]').trigger("click");
+    await flushPromises();
+
+    expect(updateTopicSummarySettings).toHaveBeenCalledWith({
+      enabled: true,
+      base_url: "https://panel.example",
+      model: "gpt-5.6-luna",
+      api_key: "sk-panel-test",
+      clear_api_key: undefined,
+    });
+    expect(
+      (wrapper.get('[data-testid="topic-summary-api-key"]').element as HTMLInputElement)
+        .value,
+    ).toBe("");
   });
 });
 

@@ -46,7 +46,7 @@ func TestAdminUsageListIncludesTopicSummaryFromRedis(t *testing.T) {
 
 	repo := &adminUsageRepoCapture{records: []service.UsageLog{{RequestID: "req-topic", Model: "gpt-test"}}}
 	usageSvc := service.NewUsageService(repo, nil, nil, nil)
-	handler := NewUsageHandler(usageSvc, nil, nil, nil, securityaudit.NewTopicSummaryService(redisClient))
+	handler := NewUsageHandler(usageSvc, nil, nil, nil, securityaudit.NewTopicSummaryService(redisClient, nil, nil))
 	router := gin.New()
 	router.GET("/admin/usage", handler.List)
 

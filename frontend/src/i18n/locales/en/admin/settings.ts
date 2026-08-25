@@ -14,6 +14,22 @@ export default {
         payment: 'Payment',
       },
       features: {
+        topicSummary: {
+          title: 'Topic Summary',
+          enabled: 'Enable topic summaries',
+          baseUrl: 'Base URL',
+          model: 'Model',
+          apiKey: 'API Key',
+          configured: 'Configured',
+          pendingClear: 'Will be cleared on save',
+          keyUnchanged: 'Configured; leave blank to keep it',
+          keyPlaceholder: 'Paste API key',
+          clearKey: 'Clear API key',
+          incomplete: 'Base URL, model, and API key are required when topic summaries are enabled',
+          saved: 'Topic summary settings saved',
+          loadFailed: 'Failed to load topic summary settings',
+          saveFailed: 'Failed to save topic summary settings',
+        },
         channelMonitor: {
           title: 'Channel Monitor',
           description: 'Choose either V1 active probes or V2 passive usage monitoring. When disabled, both background jobs stop and the user entry is hidden.',

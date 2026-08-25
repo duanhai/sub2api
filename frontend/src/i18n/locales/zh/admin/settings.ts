@@ -14,6 +14,22 @@ export default {
         payment: '支付设置',
       },
       features: {
+        topicSummary: {
+          title: '话题摘要',
+          enabled: '启用话题摘要',
+          baseUrl: 'Base URL',
+          model: '模型',
+          apiKey: 'API Key',
+          configured: '已配置',
+          pendingClear: '保存后清除',
+          keyUnchanged: '已配置，留空保持不变',
+          keyPlaceholder: '粘贴 API Key',
+          clearKey: '清除 API Key',
+          incomplete: '启用话题摘要需要填写 Base URL、模型和 API Key',
+          saved: '话题摘要设置已保存',
+          loadFailed: '加载话题摘要设置失败',
+          saveFailed: '保存话题摘要设置失败',
+        },
         channelMonitor: {
           title: '渠道监控',
           description: '启用后在 V1 主动探测与 V2 被动用量监控中二选一。关闭后两种模式的后台任务均停止，用户端入口隐藏。',

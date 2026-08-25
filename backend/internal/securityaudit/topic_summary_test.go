@@ -34,8 +34,7 @@ func TestTopicSummaryServiceDistillsOncePerSessionAndExpires(t *testing.T) {
 	t.Cleanup(endpoint.Close)
 
 	service := newTopicSummaryService(redisClient, topicSummaryConfig{
-		APIKey: "test-key", ResponsesURL: endpoint.URL, Model: "gpt-5.6-luna",
-		InternalToken: topicsummary.InternalToken("test-key"),
+		Enabled: true, APIKey: "test-key", BaseURL: endpoint.URL, Model: "gpt-5.6-luna",
 	})
 	fixedNow := time.Date(2026, 8, 25, 10, 0, 0, 0, time.UTC)
 	service.now = func() time.Time { return fixedNow }
@@ -74,8 +73,7 @@ func TestTopicSummaryServiceSkipsInternalDistillationRequest(t *testing.T) {
 	t.Cleanup(func() { _ = redisClient.Close() })
 
 	service := newTopicSummaryService(redisClient, topicSummaryConfig{
-		APIKey: "test-key", ResponsesURL: "https://example.invalid/v1/responses", Model: "gpt-5.6-luna",
-		InternalToken: topicsummary.InternalToken("test-key"),
+		Enabled: true, APIKey: "test-key", BaseURL: "https://example.invalid/v1", Model: "gpt-5.6-luna",
 	})
 	service.Observe(Request{
 		RequestID: "internal", APIKeyID: 7, Protocol: "openai_responses",
