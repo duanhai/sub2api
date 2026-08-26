@@ -3,9 +3,11 @@ package middleware
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -60,6 +62,46 @@ func TestRequestDetailCaptureSkipsInternalTopicSummaryRequest(t *testing.T) {
 	case event := <-events:
 		t.Fatalf("internal topic request was captured: %+v", event)
 	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestRequestDetailCapturePersistsWithoutLiveSubscriber(t *testing.T) {
+	logPath := t.TempDir() + "/request-details.jsonl"
+	t.Setenv("SUB2API_REQUEST_DETAIL_LOG_PATH", logPath)
+	t.Setenv("SUB2API_REQUEST_DETAIL_LOG_SOURCE", "test-server")
+	details := service.NewRequestDetailService()
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(RequestLogger())
+	router.Use(RequestDetailCapture(details))
+	router.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyAPIKey), &service.APIKey{ID: 7, Name: "test"})
+		c.Next()
+	})
+	router.POST("/v1/responses", func(c *gin.Context) {
+		_, _ = io.Copy(io.Discard, c.Request.Body)
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-test","input":"hello"}`))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	var detail service.RequestDetail
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		data, err := os.ReadFile(logPath)
+		if err == nil && len(data) > 0 && json.Unmarshal(data, &detail) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if detail.APIKeyID != 7 || detail.Model != "gpt-test" || detail.Source != "test-server" {
+		t.Fatalf("persisted detail = %+v", detail)
+	}
+	if detail.LocalID == "" || detail.RequestBody == "" {
+		t.Fatalf("missing correlation or request body: %+v", detail)
 	}
 }
 

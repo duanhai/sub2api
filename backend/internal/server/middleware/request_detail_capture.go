@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/topicsummary"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -85,7 +86,7 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 		var body *requestDetailBody
 		bodyLimit := 0
 		if details != nil {
-			bodyLimit = details.LiveBodyLimit()
+			bodyLimit = details.CaptureBodyLimit()
 		}
 		captureActive := bodyLimit > 0 && !topicsummary.IsInternalRequest(c.Request.Header)
 		originalEncoding := c.GetHeader("Content-Encoding")
@@ -101,7 +102,17 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 		if !authenticated || key == nil {
 			return
 		}
-		item := service.RequestDetail{ID: c.GetHeader("X-Request-Id"), CreatedAt: started.UTC(), Method: c.Request.Method, Path: c.Request.URL.Path, StatusCode: c.Writer.Status(), DurationMs: time.Since(started).Milliseconds(), BodyState: service.RequestBodyNotApplicable}
+		localID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+		clientID, _ := c.Request.Context().Value(ctxkey.ClientRequestID).(string)
+		item := service.RequestDetail{
+			ID: strings.TrimSpace(localID), CreatedAt: started.UTC(), Method: c.Request.Method, Path: c.Request.URL.Path,
+			StatusCode: c.Writer.Status(), DurationMs: time.Since(started).Milliseconds(), BodyState: service.RequestBodyNotApplicable,
+			SessionID: service.ExtractClientSessionID(c), LocalID: strings.TrimSpace(localID), ClientID: strings.TrimSpace(clientID),
+			UpstreamID: strings.TrimSpace(c.Writer.Header().Get("X-Request-Id")),
+		}
+		if item.ID == "" {
+			item.ID = strings.TrimSpace(c.GetHeader("X-Request-Id"))
+		}
 		if item.ID == "" {
 			item.ID = time.Now().UTC().Format("20060102T150405.000000000")
 		}
@@ -118,6 +129,7 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 		if c.Request.Method != http.MethodGet {
 			item.BodyState = service.RequestBodyEmpty
 			if body != nil && body.total > 0 {
+				item.RequestSize = body.total
 				if body.total > body.limit && strings.TrimSpace(originalEncoding) != "" {
 					item.BodyState = service.RequestBodyTruncated
 				} else if decoded, truncated, err := decodeCapturedBody(body.buf.Bytes(), originalEncoding, body.limit); err != nil {
@@ -133,6 +145,6 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 				}
 			}
 		}
-		details.PublishLive(item)
+		details.Publish(item)
 	}
 }
