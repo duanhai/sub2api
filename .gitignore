@@ -119,6 +119,10 @@ backend/.installed
 tests
 !deploy/tests/
 !deploy/tests/**
+!deploy/scf/cls-topic-distillation/tests/
+!deploy/scf/cls-topic-distillation/tests/**
+__pycache__/
+*.py[cod]
 CLAUDE.md
 .claude
 scripts
