@@ -117,3 +117,40 @@ func TestDecodeCapturedBodyHonorsDecodedLimit(t *testing.T) {
 		t.Fatalf("decoded length = %d, want 10", len(decoded))
 	}
 }
+
+func TestRequestDetailCaptureIncludesBoundConversationObservation(t *testing.T) {
+	details := service.NewRequestDetailService()
+	events, unsubscribe := details.SubscribeLive(256)
+	defer unsubscribe()
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(RequestLogger())
+	router.Use(RequestDetailCapture(details))
+	router.Use(func(c *gin.Context) {
+		c.Set(string(ContextKeyAPIKey), &service.APIKey{ID: 7, Name: "test"})
+		c.Next()
+	})
+	router.POST("/v1/responses", func(c *gin.Context) {
+		_, _ = io.Copy(io.Discard, c.Request.Body)
+		service.EnableRequestConversationCapture(c)
+		service.BindRequestConversationObservation(c, "current user", "previous assistant")
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-test","input":"hello"}`))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	select {
+	case detail := <-events:
+		if detail.CurrentUserText != "current user" || detail.PreviousAssistantText != "previous assistant" {
+			t.Fatalf("structured conversation missing: %+v", detail)
+		}
+		if detail.AssistantSource != "client_request_history" || detail.AssistantLag != 1 {
+			t.Fatalf("assistant provenance missing: %+v", detail)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for request detail")
+	}
+}

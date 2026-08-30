@@ -19,8 +19,15 @@ const (
 	requestDetailLogPathEnv        = "SUB2API_REQUEST_DETAIL_LOG_PATH"
 	requestDetailLogBodyLimitKBEnv = "SUB2API_REQUEST_DETAIL_LOG_BODY_LIMIT_KB"
 	requestDetailLogSourceEnv      = "SUB2API_REQUEST_DETAIL_LOG_SOURCE"
+	requestDetailLogModeEnv        = "SUB2API_REQUEST_DETAIL_LOG_MODE"
 	requestDetailLogQueueSize      = 32
 	requestDetailDefaultBodyLimit  = 256 * 1024
+)
+
+const (
+	requestDetailLogModeRaw        = "raw"
+	requestDetailLogModeDual       = "dual"
+	requestDetailLogModeStructured = "structured"
 )
 
 const (
@@ -29,6 +36,7 @@ const (
 	RequestBodyNotApplicable = "not_applicable"
 	RequestBodyEmpty         = "empty"
 	RequestBodyDecodeFailed  = "decode_failed"
+	RequestBodyStructured    = "structured"
 )
 
 type RequestDetail struct {
@@ -53,6 +61,15 @@ type RequestDetail struct {
 	RequestSize int       `json:"request_size_bytes,omitempty"`
 	RequestBody string    `json:"request_body,omitempty"`
 	BodyState   string    `json:"body_state"`
+
+	ConversationVersion    int    `json:"conversation_version,omitempty"`
+	CurrentUserText        string `json:"current_user_text,omitempty"`
+	PreviousAssistantText  string `json:"previous_assistant_text,omitempty"`
+	CurrentUserBytes       int    `json:"current_user_size_bytes,omitempty"`
+	PreviousAssistantBytes int    `json:"previous_assistant_size_bytes,omitempty"`
+	ConversationTextState  string `json:"conversation_text_state,omitempty"`
+	AssistantSource        string `json:"assistant_source,omitempty"`
+	AssistantLag           int    `json:"assistant_lag,omitempty"`
 }
 
 type RequestDetailService struct {
@@ -98,6 +115,10 @@ func (s *RequestDetailService) CaptureBodyLimit() int {
 		limit = s.persistent.bodyLimit
 	}
 	return limit
+}
+
+func (s *RequestDetailService) ConversationCaptureEnabled() bool {
+	return s != nil && s.persistent != nil && s.persistent.mode != requestDetailLogModeRaw
 }
 
 func (s *RequestDetailService) SubscribeLive(bodyLimitKB int) (<-chan RequestDetail, func()) {
@@ -156,6 +177,7 @@ func RequestDetailModel(body []byte) string {
 type requestDetailPersistentSink struct {
 	bodyLimit   int
 	source      string
+	mode        string
 	queue       chan RequestDetail
 	writer      io.Writer
 	dropped     atomic.Uint64
@@ -173,12 +195,16 @@ func newRequestDetailPersistentSinkFromEnv() *requestDetailPersistentSink {
 	writer := &lumberjack.Logger{
 		Filename: path, MaxSize: 100, MaxBackups: 2, MaxAge: 1, Compress: true, LocalTime: true,
 	}
-	return newRequestDetailPersistentSink(
+	sink := newRequestDetailPersistentSink(
 		writer,
 		requestDetailBodyLimitFromEnv(os.Getenv(requestDetailLogBodyLimitKBEnv)),
 		strings.TrimSpace(os.Getenv(requestDetailLogSourceEnv)),
 		requestDetailLogQueueSize,
 	)
+	if sink != nil {
+		sink.mode = requestDetailLogModeFromEnv(os.Getenv(requestDetailLogModeEnv))
+	}
+	return sink
 }
 
 func newRequestDetailPersistentSink(writer io.Writer, bodyLimit int, source string, queueSize int) *requestDetailPersistentSink {
@@ -191,11 +217,23 @@ func newRequestDetailPersistentSink(writer io.Writer, bodyLimit int, source stri
 	sink := &requestDetailPersistentSink{
 		bodyLimit: bodyLimit,
 		source:    strings.TrimSpace(source),
+		mode:      requestDetailLogModeRaw,
 		queue:     make(chan RequestDetail, queueSize),
 		writer:    writer,
 	}
 	go sink.run()
 	return sink
+}
+
+func requestDetailLogModeFromEnv(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case requestDetailLogModeDual:
+		return requestDetailLogModeDual
+	case requestDetailLogModeStructured:
+		return requestDetailLogModeStructured
+	default:
+		return requestDetailLogModeRaw
+	}
 }
 
 func requestDetailBodyLimitFromEnv(value string) int {
@@ -215,6 +253,10 @@ func (s *requestDetailPersistentSink) enqueue(detail RequestDetail) {
 		return
 	}
 	detail.Source = s.source
+	if s.mode == requestDetailLogModeStructured {
+		detail.RequestBody = ""
+		detail.BodyState = RequestBodyStructured
+	}
 	if len(detail.RequestBody) > s.bodyLimit {
 		detail.RequestBody = detail.RequestBody[:s.bodyLimit]
 		detail.BodyState = RequestBodyTruncated

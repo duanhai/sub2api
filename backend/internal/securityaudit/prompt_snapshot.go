@@ -12,7 +12,8 @@ import (
 )
 
 var (
-	ErrNoPromptText = errors.New("prompt audit request contains no user text")
+	ErrNoPromptText              = errors.New("prompt audit request contains no user text")
+	ErrNoConversationObservation = errors.New("request contains no new user conversation turn")
 
 	bearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+\-/]+=*`)
 	apiKeyPattern = regexp.MustCompile(`(?i)\b(sk|rk|pk|api[_-]?key|token|secret|password)[-_:=\s]+[A-Za-z0-9._~+\-/]{8,}`)
@@ -27,6 +28,86 @@ type promptSegment struct {
 	text string
 	user bool
 	role string
+}
+
+type ConversationObservation struct {
+	CurrentUserText       string
+	PreviousAssistantText string
+}
+
+// ExtractConversationObservation recovers only the newly submitted user turn
+// and the nearest earlier assistant output resent by the client. It deliberately
+// excludes the broader client-controlled scope retained by prompt auditing.
+func ExtractConversationObservation(req Request) (ConversationObservation, error) {
+	var document any
+	if err := json.Unmarshal(req.Body, &document); err != nil {
+		return ConversationObservation{}, errors.New("conversation observation request JSON is invalid")
+	}
+	segments := normalizedPromptSegments(extractProtocolSegments(req.Protocol, document))
+	lastConversationIndex := -1
+	for index := len(segments) - 1; index >= 0; index-- {
+		if isUserSegment(segments[index]) || isAssistantOutputSegment(segments[index]) {
+			lastConversationIndex = index
+			break
+		}
+	}
+	if lastConversationIndex < 0 || !isUserSegment(segments[lastConversationIndex]) {
+		return ConversationObservation{}, ErrNoConversationObservation
+	}
+
+	userStart := lastConversationIndex
+	for userStart > 0 && isUserSegment(segments[userStart-1]) {
+		userStart--
+	}
+	userParts := make([]string, 0, lastConversationIndex-userStart+1)
+	for _, segment := range segments[userStart : lastConversationIndex+1] {
+		if text := conversationUserText(segment.text); text != "" {
+			userParts = append(userParts, text)
+		}
+	}
+	if len(userParts) == 0 {
+		return ConversationObservation{}, ErrNoConversationObservation
+	}
+
+	assistantParts := make([]string, 0, 1)
+	for index := userStart - 1; index >= 0; index-- {
+		if isUserSegment(segments[index]) {
+			break
+		}
+		if !isAssistantOutputSegment(segments[index]) {
+			continue
+		}
+		start := index
+		for start > 0 && isAssistantOutputSegment(segments[start-1]) {
+			start--
+		}
+		for _, segment := range segments[start : index+1] {
+			assistantParts = append(assistantParts, segment.text)
+		}
+		break
+	}
+
+	return ConversationObservation{
+		CurrentUserText:       strings.Join(userParts, "\n\n"),
+		PreviousAssistantText: strings.Join(assistantParts, "\n\n"),
+	}, nil
+}
+
+func conversationUserText(value string) string {
+	value = strings.TrimSpace(value)
+	for _, prefix := range []string{
+		"# AGENTS.md instructions",
+		"<environment_context>",
+		"<skills_instructions>",
+		"<permissions instructions>",
+		"Another language model started to solve this problem",
+		"Recent conversation messages",
+	} {
+		if strings.HasPrefix(value, prefix) {
+			return ""
+		}
+	}
+	return value
 }
 
 func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {

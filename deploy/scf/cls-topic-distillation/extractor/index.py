@@ -49,6 +49,9 @@ def extract_candidate(content: Any, timestamp: Any = "") -> dict[str, Any] | Non
     raw = parse_log_content(content)
     if not raw:
         return None
+    structured = extract_structured_candidate(raw, timestamp)
+    if structured is not None:
+        return structured
     request_body = raw.get("request_body")
     if not isinstance(request_body, str) or not request_body.strip():
         return None
@@ -76,6 +79,40 @@ def extract_candidate(content: Any, timestamp: Any = "") -> dict[str, Any] | Non
             "body_state": raw.get("body_state"),
             "has_assistant_history": any(role == "assistant" for role, _ in turns),
             "distill_text": distill_text,
+        }
+    )
+
+
+def extract_structured_candidate(raw: dict[str, Any], timestamp: Any = "") -> dict[str, Any] | None:
+    current_user = raw.get("current_user_text")
+    if not isinstance(current_user, str) or not current_user.strip():
+        return None
+    previous_assistant = raw.get("previous_assistant_text")
+    if not isinstance(previous_assistant, str):
+        previous_assistant = ""
+    text_limit = env_int("DISTILL_TEXT_MAX_CHARS", DEFAULT_TEXT_LIMIT, 500, 12000)
+    parts = []
+    if previous_assistant.strip():
+        parts.append("assistant(previous): " + clean_text(previous_assistant))
+    parts.append("user(current): " + clean_text(current_user))
+    return compact_dict(
+        {
+            "candidate_version": "2",
+            "request_id": raw.get("id") or raw.get("local_request_id"),
+            "created_at": raw.get("created_at"),
+            "timestamp": str(timestamp or ""),
+            "source": raw.get("source"),
+            "api_key_id": raw.get("api_key_id"),
+            "api_key_name": raw.get("api_key_name"),
+            "user_id": raw.get("user_id"),
+            "user_email": raw.get("user_email"),
+            "session_id": raw.get("session_id"),
+            "model": raw.get("model"),
+            "body_state": raw.get("body_state"),
+            "assistant_source": raw.get("assistant_source"),
+            "assistant_lag": raw.get("assistant_lag"),
+            "has_assistant_history": bool(previous_assistant.strip()),
+            "distill_text": trim_from_end("\n\n".join(parts), text_limit),
         }
     )
 

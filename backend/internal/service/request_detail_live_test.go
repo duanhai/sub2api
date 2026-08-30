@@ -128,3 +128,52 @@ func TestRequestDetailPersistentBodyLimitDefaultsAndValidation(t *testing.T) {
 		t.Fatalf("requestDetailBodyLimitFromEnv(512) = %d", got)
 	}
 }
+
+func TestRequestDetailLogModeDefaultsToRaw(t *testing.T) {
+	for _, value := range []string{"", "invalid", "RAW"} {
+		if got := requestDetailLogModeFromEnv(value); got != requestDetailLogModeRaw {
+			t.Fatalf("requestDetailLogModeFromEnv(%q) = %q, want raw", value, got)
+		}
+	}
+	if got := requestDetailLogModeFromEnv(" dual "); got != requestDetailLogModeDual {
+		t.Fatalf("dual mode = %q", got)
+	}
+	if got := requestDetailLogModeFromEnv("STRUCTURED"); got != requestDetailLogModeStructured {
+		t.Fatalf("structured mode = %q", got)
+	}
+}
+
+func TestRequestDetailStructuredSinkOmitsRawBody(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "request-details-*.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	sink := newRequestDetailPersistentSink(file, 256*1024, "test-source", 4)
+	sink.mode = requestDetailLogModeStructured
+	svc := newRequestDetailService(sink)
+	svc.Publish(RequestDetail{
+		ID: "req-structured", RequestBody: `{"input":"raw"}`, BodyState: RequestBodyCaptured,
+		RequestSize: 98765, ConversationVersion: 1, CurrentUserText: "current user", PreviousAssistantText: "previous assistant",
+	})
+
+	var detail RequestDetail
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		data, readErr := os.ReadFile(file.Name())
+		if readErr == nil && len(data) > 0 && json.Unmarshal(data, &detail) == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if detail.RequestBody != "" || detail.BodyState != RequestBodyStructured {
+		t.Fatalf("structured detail retained raw body: %+v", detail)
+	}
+	if detail.CurrentUserText != "current user" || detail.PreviousAssistantText != "previous assistant" {
+		t.Fatalf("structured detail lost conversation: %+v", detail)
+	}
+	if detail.RequestSize != 98765 {
+		t.Fatalf("structured detail lost request size: %+v", detail)
+	}
+}

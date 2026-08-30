@@ -89,6 +89,9 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 			bodyLimit = details.CaptureBodyLimit()
 		}
 		captureActive := bodyLimit > 0 && !topicsummary.IsInternalRequest(c.Request.Header)
+		if captureActive && details.ConversationCaptureEnabled() {
+			service.EnableRequestConversationCapture(c)
+		}
 		originalEncoding := c.GetHeader("Content-Encoding")
 		if captureActive && c.Request.Body != nil && c.Request.Method != http.MethodGet {
 			body = &requestDetailBody{ReadCloser: c.Request.Body, limit: bodyLimit}
@@ -143,6 +146,18 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 						item.BodyState = service.RequestBodyCaptured
 					}
 				}
+			}
+		}
+		if observation, ok := service.RequestConversationObservationFromContext(c); ok {
+			item.ConversationVersion = 1
+			item.CurrentUserText = observation.CurrentUserText
+			item.PreviousAssistantText = observation.PreviousAssistantText
+			item.CurrentUserBytes = observation.CurrentUserBytes
+			item.PreviousAssistantBytes = observation.PreviousAssistantBytes
+			item.ConversationTextState = observation.TextState
+			if observation.PreviousAssistantBytes > 0 {
+				item.AssistantSource = "client_request_history"
+				item.AssistantLag = 1
 			}
 		}
 		details.Publish(item)

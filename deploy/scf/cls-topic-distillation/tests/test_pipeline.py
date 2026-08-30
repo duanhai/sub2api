@@ -34,6 +34,23 @@ def cls_event(contents):
 
 
 class ExtractorTests(unittest.TestCase):
+    def test_prefers_structured_conversation_observation(self):
+        raw = {
+            "id": "req-structured",
+            "conversation_version": 1,
+            "current_user_text": "还是不行，继续查",
+            "previous_assistant_text": "已经完成修改",
+            "assistant_source": "client_request_history",
+            "assistant_lag": 1,
+            "request_body": "must not be parsed",
+        }
+        candidate = extractor.extract_candidate(json.dumps(raw, ensure_ascii=False))
+        self.assertEqual(candidate["candidate_version"], "2")
+        self.assertEqual(candidate["request_id"], "req-structured")
+        self.assertIn("assistant(previous): 已经完成修改", candidate["distill_text"])
+        self.assertIn("user(current): 还是不行，继续查", candidate["distill_text"])
+        self.assertTrue(candidate["has_assistant_history"])
+
     def test_extracts_chat_history(self):
         raw = {
             "id": "req-1",
@@ -105,6 +122,18 @@ class ExtractorTests(unittest.TestCase):
 
 
 class AnalyzerTests(unittest.TestCase):
+    def test_parses_structured_candidate_without_distill_text(self):
+        candidate = {
+            "candidate_version": "2",
+            "request_id": "req-structured",
+            "current_user_text": "继续处理",
+            "previous_assistant_text": "上一轮结论",
+        }
+        parsed = analyzer.parse_candidate(json.dumps(candidate, ensure_ascii=False))
+        self.assertIn("assistant(previous): 上一轮结论", parsed["distill_text"])
+        self.assertIn("user(current): 继续处理", parsed["distill_text"])
+        self.assertTrue(parsed["has_assistant_history"])
+
     def test_parses_candidate_from_scf_log_line(self):
         candidate = {"request_id": "req-1", "distill_text": "user: hello"}
         line = "START RequestId: abc\n" + analyzer.CANDIDATE_MARKER + json.dumps(candidate)

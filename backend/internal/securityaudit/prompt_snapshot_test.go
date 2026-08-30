@@ -368,6 +368,49 @@ func TestResponsesOutputTextIncludedInFullAndLatestTurnSnapshots(t *testing.T) {
 	require.NotContains(t, latestTurn.ScanText, "earlier user input")
 }
 
+func TestExtractConversationObservationKeepsCurrentUserAndPreviousAssistant(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"older user input"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"previous assistant output"}]},
+		{"type":"function_call_output","call_id":"call_1","output":"large tool output"},
+		{"type":"message","role":"user","content":[
+			{"type":"input_text","text":"# AGENTS.md instructions\n<INSTRUCTIONS>generated</INSTRUCTIONS>"},
+			{"type":"input_text","text":"<environment_context><cwd>/workspace</cwd></environment_context>"},
+			{"type":"input_text","text":"current human request"}
+		]}
+	]}`)
+
+	observation, err := ExtractConversationObservation(Request{Protocol: "openai_responses", Body: body})
+	require.NoError(t, err)
+	require.Equal(t, "current human request", observation.CurrentUserText)
+	require.Equal(t, "previous assistant output", observation.PreviousAssistantText)
+}
+
+func TestExtractConversationObservationRequiresANewUserTurn(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":"user request"},
+		{"type":"message","role":"assistant","content":"assistant response"},
+		{"type":"function_call_output","call_id":"call_1","output":"tool result"}
+	]}`)
+
+	_, err := ExtractConversationObservation(Request{Protocol: "openai_responses", Body: body})
+	require.ErrorIs(t, err, ErrNoConversationObservation)
+}
+
+func TestExtractConversationObservationDoesNotCrossAnEarlierUserTurn(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"assistant","content":"unrelated assistant response"},
+		{"type":"message","role":"user","content":"earlier user follow-up"},
+		{"type":"message","role":"developer","content":"injected developer context"},
+		{"type":"message","role":"user","content":"current user follow-up"}
+	]}`)
+
+	observation, err := ExtractConversationObservation(Request{Protocol: "openai_responses", Body: body})
+	require.NoError(t, err)
+	require.Equal(t, "current user follow-up", observation.CurrentUserText)
+	require.Empty(t, observation.PreviousAssistantText)
+}
+
 func TestBlockingPromptSnapshotPreservesFullScopeByDefaultAndWithoutUserInput(t *testing.T) {
 	req := Request{Protocol: "openai_chat_completions", Body: []byte(`{"messages":[{"role":"system","content":"system instruction"},{"role":"user","content":"older user input"},{"role":"assistant","content":"previous output"},{"role":"user","content":"latest user input"}]}`)}
 	full, err := ExtractPromptSnapshot(req)
