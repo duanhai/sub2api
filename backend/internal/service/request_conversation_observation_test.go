@@ -29,6 +29,9 @@ func TestBindRequestConversationObservationUsesOneBoundedUTF8Budget(t *testing.T
 	if observation.TextState != RequestConversationTextTruncated {
 		t.Fatalf("text state = %q, want truncated", observation.TextState)
 	}
+	if observation.ExtractState != RequestConversationExtractCaptured {
+		t.Fatalf("extract state = %q, want captured", observation.ExtractState)
+	}
 }
 
 func TestBindRequestConversationObservationRequiresCaptureFlag(t *testing.T) {
@@ -37,5 +40,20 @@ func TestBindRequestConversationObservationRequiresCaptureFlag(t *testing.T) {
 	BindRequestConversationObservation(c, "user", "assistant")
 	if _, ok := RequestConversationObservationFromContext(c); ok {
 		t.Fatal("observation was bound while capture was disabled")
+	}
+}
+
+func TestBindRequestConversationExtractState(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	EnableRequestConversationCapture(c)
+	BindRequestConversationExtractState(c, RequestConversationExtractNoNewUser)
+
+	observation, ok := RequestConversationObservationFromContext(c)
+	if !ok || observation.ExtractState != RequestConversationExtractNoNewUser {
+		t.Fatalf("extract state was not bound: %+v", observation)
+	}
+	if observation.CurrentUserText != "" {
+		t.Fatalf("failure state retained conversation text: %+v", observation)
 	}
 }

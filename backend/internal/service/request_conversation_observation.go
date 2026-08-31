@@ -18,7 +18,16 @@ const (
 	RequestConversationTextTruncated = "truncated"
 )
 
+const (
+	RequestConversationExtractCaptured           = "captured"
+	RequestConversationExtractNoNewUser          = "no_new_user"
+	RequestConversationExtractFilteredEmpty      = "filtered_empty"
+	RequestConversationExtractInvalidJSON        = "invalid_json"
+	RequestConversationExtractUnsupportedPayload = "unsupported_payload"
+)
+
 type RequestConversationObservation struct {
+	ExtractState           string
 	CurrentUserText        string
 	PreviousAssistantText  string
 	CurrentUserBytes       int
@@ -52,6 +61,7 @@ func BindRequestConversationObservation(c *gin.Context, currentUserText, previou
 	}
 
 	observation := RequestConversationObservation{
+		ExtractState:           RequestConversationExtractCaptured,
 		CurrentUserBytes:       len(currentUserText),
 		PreviousAssistantBytes: len(previousAssistantText),
 		TextState:              RequestConversationTextCaptured,
@@ -64,6 +74,13 @@ func BindRequestConversationObservation(c *gin.Context, currentUserText, previou
 		observation.TextState = RequestConversationTextTruncated
 	}
 	c.Set(requestConversationObservationContextKey, observation)
+}
+
+func BindRequestConversationExtractState(c *gin.Context, state string) {
+	if c == nil || !RequestConversationCaptureEnabled(c) || strings.TrimSpace(state) == "" {
+		return
+	}
+	c.Set(requestConversationObservationContextKey, RequestConversationObservation{ExtractState: state})
 }
 
 func RequestConversationObservationFromContext(c *gin.Context) (RequestConversationObservation, bool) {

@@ -62,14 +62,15 @@ type RequestDetail struct {
 	RequestBody string    `json:"request_body,omitempty"`
 	BodyState   string    `json:"body_state"`
 
-	ConversationVersion    int    `json:"conversation_version,omitempty"`
-	CurrentUserText        string `json:"current_user_text,omitempty"`
-	PreviousAssistantText  string `json:"previous_assistant_text,omitempty"`
-	CurrentUserBytes       int    `json:"current_user_size_bytes,omitempty"`
-	PreviousAssistantBytes int    `json:"previous_assistant_size_bytes,omitempty"`
-	ConversationTextState  string `json:"conversation_text_state,omitempty"`
-	AssistantSource        string `json:"assistant_source,omitempty"`
-	AssistantLag           int    `json:"assistant_lag,omitempty"`
+	ConversationVersion      int    `json:"conversation_version,omitempty"`
+	ConversationExtractState string `json:"conversation_extract_state,omitempty"`
+	CurrentUserText          string `json:"current_user_text,omitempty"`
+	PreviousAssistantText    string `json:"previous_assistant_text,omitempty"`
+	CurrentUserBytes         int    `json:"current_user_size_bytes,omitempty"`
+	PreviousAssistantBytes   int    `json:"previous_assistant_size_bytes,omitempty"`
+	ConversationTextState    string `json:"conversation_text_state,omitempty"`
+	AssistantSource          string `json:"assistant_source,omitempty"`
+	AssistantLag             int    `json:"assistant_lag,omitempty"`
 }
 
 type RequestDetailService struct {
@@ -253,7 +254,7 @@ func (s *requestDetailPersistentSink) enqueue(detail RequestDetail) {
 		return
 	}
 	detail.Source = s.source
-	if s.mode == requestDetailLogModeStructured {
+	if s.mode == requestDetailLogModeStructured && shouldOmitStructuredRequestBody(detail) {
 		detail.RequestBody = ""
 		detail.BodyState = RequestBodyStructured
 	}
@@ -266,6 +267,14 @@ func (s *requestDetailPersistentSink) enqueue(detail RequestDetail) {
 	default:
 		s.dropped.Add(1)
 	}
+}
+
+func shouldOmitStructuredRequestBody(detail RequestDetail) bool {
+	if detail.StatusCode < 200 || detail.StatusCode >= 400 ||
+		detail.ConversationExtractState != RequestConversationExtractCaptured {
+		return false
+	}
+	return detail.Path == "/responses" || detail.Path == "/v1/responses"
 }
 
 func (s *requestDetailPersistentSink) run() {

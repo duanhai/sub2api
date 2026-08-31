@@ -397,6 +397,29 @@ func TestExtractConversationObservationRequiresANewUserTurn(t *testing.T) {
 	require.ErrorIs(t, err, ErrNoConversationObservation)
 }
 
+func TestExtractConversationObservationClassifiesFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		err  error
+	}{
+		{name: "invalid JSON", body: `{`, err: ErrConversationInvalidJSON},
+		{name: "unsupported input", body: `{"input":42}`, err: ErrConversationUnsupportedPayload},
+		{
+			name: "filtered user text",
+			body: `{"input":[{"type":"message","role":"user","content":"You are performing a CONTEXT CHECKPOINT COMPACTION for this task"}]}`,
+			err:  ErrConversationFilteredEmpty,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := ExtractConversationObservation(Request{Protocol: "openai_responses", Body: []byte(test.body)})
+			require.ErrorIs(t, err, test.err)
+		})
+	}
+}
+
 func TestExtractConversationObservationDoesNotCrossAnEarlierUserTurn(t *testing.T) {
 	body := []byte(`{"input":[
 		{"type":"message","role":"assistant","content":"unrelated assistant response"},

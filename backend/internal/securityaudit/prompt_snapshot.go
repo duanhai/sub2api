@@ -12,8 +12,11 @@ import (
 )
 
 var (
-	ErrNoPromptText              = errors.New("prompt audit request contains no user text")
-	ErrNoConversationObservation = errors.New("request contains no new user conversation turn")
+	ErrNoPromptText                   = errors.New("prompt audit request contains no user text")
+	ErrNoConversationObservation      = errors.New("request contains no new user conversation turn")
+	ErrConversationFilteredEmpty      = errors.New("request user conversation text was filtered")
+	ErrConversationInvalidJSON        = errors.New("conversation observation request JSON is invalid")
+	ErrConversationUnsupportedPayload = errors.New("conversation observation payload is unsupported")
 
 	bearerPattern = regexp.MustCompile(`(?i)\bBearer\s+[A-Za-z0-9._~+\-/]+=*`)
 	apiKeyPattern = regexp.MustCompile(`(?i)\b(sk|rk|pk|api[_-]?key|token|secret|password)[-_:=\s]+[A-Za-z0-9._~+\-/]{8,}`)
@@ -41,7 +44,10 @@ type ConversationObservation struct {
 func ExtractConversationObservation(req Request) (ConversationObservation, error) {
 	var document any
 	if err := json.Unmarshal(req.Body, &document); err != nil {
-		return ConversationObservation{}, errors.New("conversation observation request JSON is invalid")
+		return ConversationObservation{}, ErrConversationInvalidJSON
+	}
+	if !supportsConversationObservation(req.Protocol, document) {
+		return ConversationObservation{}, ErrConversationUnsupportedPayload
 	}
 	segments := normalizedPromptSegments(extractProtocolSegments(req.Protocol, document))
 	lastConversationIndex := -1
@@ -66,7 +72,7 @@ func ExtractConversationObservation(req Request) (ConversationObservation, error
 		}
 	}
 	if len(userParts) == 0 {
-		return ConversationObservation{}, ErrNoConversationObservation
+		return ConversationObservation{}, ErrConversationFilteredEmpty
 	}
 
 	assistantParts := make([]string, 0, 1)
@@ -102,12 +108,51 @@ func conversationUserText(value string) string {
 		"<permissions instructions>",
 		"Another language model started to solve this problem",
 		"Recent conversation messages",
+		"You are performing a CONTEXT CHECKPOINT COMPACTION",
+		"The following is the Codex agent history whose request action you are assessing",
+		"The following is the Codex agent history added since your last approval assessment",
 	} {
 		if strings.HasPrefix(value, prefix) {
 			return ""
 		}
 	}
 	return value
+}
+
+func supportsConversationObservation(protocol string, document any) bool {
+	root, ok := document.(map[string]any)
+	if !ok {
+		return false
+	}
+	protocol = strings.ToLower(strings.TrimSpace(protocol))
+	if protocol != "openai_responses" && protocol != "responses" && protocol != "responses_websocket" {
+		return true
+	}
+	if frameType := stringValue(root["type"]); frameType != "" || protocol == "responses_websocket" {
+		if frameType != "response.create" {
+			return false
+		}
+		if input, exists := root["input"]; exists {
+			return supportsResponsesInput(input)
+		}
+		response, ok := root["response"].(map[string]any)
+		if !ok {
+			return false
+		}
+		input, exists := response["input"]
+		return exists && supportsResponsesInput(input)
+	}
+	input, exists := root["input"]
+	return exists && supportsResponsesInput(input)
+}
+
+func supportsResponsesInput(value any) bool {
+	switch value.(type) {
+	case string, []any, map[string]any:
+		return true
+	default:
+		return false
+	}
 }
 
 func ExtractPromptSnapshot(req Request) (PromptSnapshot, error) {

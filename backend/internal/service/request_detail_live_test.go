@@ -154,8 +154,10 @@ func TestRequestDetailStructuredSinkOmitsRawBody(t *testing.T) {
 	sink.mode = requestDetailLogModeStructured
 	svc := newRequestDetailService(sink)
 	svc.Publish(RequestDetail{
-		ID: "req-structured", RequestBody: `{"input":"raw"}`, BodyState: RequestBodyCaptured,
-		RequestSize: 98765, ConversationVersion: 1, CurrentUserText: "current user", PreviousAssistantText: "previous assistant",
+		ID: "req-structured", Path: "/v1/responses", StatusCode: 200,
+		RequestBody: `{"input":"raw"}`, BodyState: RequestBodyCaptured,
+		RequestSize: 98765, ConversationVersion: 1, ConversationExtractState: RequestConversationExtractCaptured,
+		CurrentUserText: "current user", PreviousAssistantText: "previous assistant",
 	})
 
 	var detail RequestDetail
@@ -175,5 +177,54 @@ func TestRequestDetailStructuredSinkOmitsRawBody(t *testing.T) {
 	}
 	if detail.RequestSize != 98765 {
 		t.Fatalf("structured detail lost request size: %+v", detail)
+	}
+}
+
+func TestShouldOmitStructuredRequestBody(t *testing.T) {
+	tests := []struct {
+		name   string
+		detail RequestDetail
+		want   bool
+	}{
+		{
+			name: "captured responses success",
+			detail: RequestDetail{Path: "/responses", StatusCode: 200,
+				ConversationExtractState: RequestConversationExtractCaptured},
+			want: true,
+		},
+		{
+			name: "captured v1 responses redirect",
+			detail: RequestDetail{Path: "/v1/responses", StatusCode: 307,
+				ConversationExtractState: RequestConversationExtractCaptured},
+			want: true,
+		},
+		{
+			name: "responses HTTP error",
+			detail: RequestDetail{Path: "/responses", StatusCode: 400,
+				ConversationExtractState: RequestConversationExtractCaptured},
+		},
+		{
+			name: "responses no new user",
+			detail: RequestDetail{Path: "/responses", StatusCode: 200,
+				ConversationExtractState: RequestConversationExtractNoNewUser},
+		},
+		{
+			name: "unsupported messages route",
+			detail: RequestDetail{Path: "/v1/messages", StatusCode: 200,
+				ConversationExtractState: RequestConversationExtractCaptured},
+		},
+		{
+			name: "unsupported chat route",
+			detail: RequestDetail{Path: "/v1/chat/completions", StatusCode: 200,
+				ConversationExtractState: RequestConversationExtractCaptured},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := shouldOmitStructuredRequestBody(test.detail); got != test.want {
+				t.Fatalf("shouldOmitStructuredRequestBody() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }

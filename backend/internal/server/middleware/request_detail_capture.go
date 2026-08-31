@@ -149,15 +149,18 @@ func RequestDetailCapture(details *service.RequestDetailService) gin.HandlerFunc
 			}
 		}
 		if observation, ok := service.RequestConversationObservationFromContext(c); ok {
-			item.ConversationVersion = 1
-			item.CurrentUserText = observation.CurrentUserText
-			item.PreviousAssistantText = observation.PreviousAssistantText
-			item.CurrentUserBytes = observation.CurrentUserBytes
-			item.PreviousAssistantBytes = observation.PreviousAssistantBytes
-			item.ConversationTextState = observation.TextState
-			if observation.PreviousAssistantBytes > 0 {
-				item.AssistantSource = "client_request_history"
-				item.AssistantLag = 1
+			item.ConversationExtractState = observation.ExtractState
+			if observation.ExtractState == service.RequestConversationExtractCaptured {
+				item.ConversationVersion = 1
+				item.CurrentUserText = observation.CurrentUserText
+				item.PreviousAssistantText = observation.PreviousAssistantText
+				item.CurrentUserBytes = observation.CurrentUserBytes
+				item.PreviousAssistantBytes = observation.PreviousAssistantBytes
+				item.ConversationTextState = observation.TextState
+				if observation.PreviousAssistantBytes > 0 {
+					item.AssistantSource = "client_request_history"
+					item.AssistantLag = 1
+				}
 			}
 		}
 		details.Publish(item)

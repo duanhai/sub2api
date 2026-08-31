@@ -144,6 +144,9 @@ func TestRequestDetailCaptureIncludesBoundConversationObservation(t *testing.T) 
 
 	select {
 	case detail := <-events:
+		if detail.ConversationExtractState != service.RequestConversationExtractCaptured {
+			t.Fatalf("conversation extract state missing: %+v", detail)
+		}
 		if detail.CurrentUserText != "current user" || detail.PreviousAssistantText != "previous assistant" {
 			t.Fatalf("structured conversation missing: %+v", detail)
 		}
