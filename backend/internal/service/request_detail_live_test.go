@@ -58,7 +58,7 @@ func TestRequestDetailPersistentSinkWritesJSONWithoutLiveSubscriber(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	t.Cleanup(func() { _ = file.Close() })
 
 	sink := newRequestDetailPersistentSink(file, 256*1024, "test-source", 4)
 	svc := newRequestDetailService(sink)
@@ -148,7 +148,7 @@ func TestRequestDetailStructuredSinkOmitsRawBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	t.Cleanup(func() { _ = file.Close() })
 
 	sink := newRequestDetailPersistentSink(file, 256*1024, "test-source", 4)
 	sink.mode = requestDetailLogModeStructured

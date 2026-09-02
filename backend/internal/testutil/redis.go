@@ -9,13 +9,20 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// NewRedisGatewayCache returns a real Redis-backed gateway cache for tests.
-func NewRedisGatewayCache(t *testing.T) service.GatewayCache {
+// NewRedisClient returns a real Redis client backed by an in-memory test server.
+func NewRedisClient(t *testing.T) *redis.Client {
 	t.Helper()
 
 	redisServer := miniredis.RunT(t)
 	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
 	t.Cleanup(func() { _ = redisClient.Close() })
 
-	return repository.NewGatewayCache(redisClient)
+	return redisClient
+}
+
+// NewRedisGatewayCache returns a real Redis-backed gateway cache for tests.
+func NewRedisGatewayCache(t *testing.T) service.GatewayCache {
+	t.Helper()
+
+	return repository.NewGatewayCache(NewRedisClient(t))
 }

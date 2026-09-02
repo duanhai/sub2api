@@ -11,9 +11,8 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/usagestats"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	"github.com/Wei-Shaw/sub2api/internal/service"
-	"github.com/alicebob/miniredis/v2"
+	"github.com/Wei-Shaw/sub2api/internal/testutil"
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,9 +38,7 @@ func (s *adminUsageRepoCapture) ListWithFilters(ctx context.Context, params pagi
 func TestAdminUsageListIncludesTopicSummaryFromRedis(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	t.Setenv("OPENAI_BASE_URL", "https://example.test/v1")
-	redisServer := miniredis.RunT(t)
-	redisClient := redis.NewClient(&redis.Options{Addr: redisServer.Addr()})
-	t.Cleanup(func() { _ = redisClient.Close() })
+	redisClient := testutil.NewRedisClient(t)
 	require.NoError(t, redisClient.Set(t.Context(), "sub2api:topic_summary:request:req-topic", `{"title":"Docker 更新","category":"运维部署","summary":"讨论不停机更新","status":"completed","generated_at":"2026-08-25T10:00:00Z"}`, time.Hour).Err())
 
 	repo := &adminUsageRepoCapture{records: []service.UsageLog{{RequestID: "req-topic", Model: "gpt-test"}}}

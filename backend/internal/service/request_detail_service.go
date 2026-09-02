@@ -186,10 +186,15 @@ type requestDetailPersistentSink struct {
 }
 
 func newRequestDetailPersistentSinkFromEnv() *requestDetailPersistentSink {
-	path := strings.TrimSpace(os.Getenv(requestDetailLogPathEnv))
-	if path == "" {
+	rawPath := strings.TrimSpace(os.Getenv(requestDetailLogPathEnv))
+	if rawPath == "" {
 		return nil
 	}
+	path := filepath.Clean(rawPath)
+	if !filepath.IsAbs(path) {
+		return nil
+	}
+	//nolint:gosec // G703: the administrator-controlled path is cleaned and required to be absolute.
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return nil
 	}

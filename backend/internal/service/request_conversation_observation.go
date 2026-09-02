@@ -68,7 +68,7 @@ func BindRequestConversationObservation(c *gin.Context, currentUserText, previou
 	}
 	remaining := requestConversationTextLimitBytes
 	observation.CurrentUserText, remaining = trimConversationText(currentUserText, remaining)
-	observation.PreviousAssistantText, remaining = trimConversationText(previousAssistantText, remaining)
+	observation.PreviousAssistantText, _ = trimConversationText(previousAssistantText, remaining)
 	if len(observation.CurrentUserText) < observation.CurrentUserBytes ||
 		len(observation.PreviousAssistantText) < observation.PreviousAssistantBytes {
 		observation.TextState = RequestConversationTextTruncated
