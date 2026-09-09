@@ -1216,11 +1216,10 @@ func normalizeOpenAIResponsesImageOnlyModel(reqBody map[string]any) bool {
 		reqBody["tool_choice"] = map[string]any{"type": "image_generation"}
 		modified = true
 	}
-	mainModel := openAIImagesResponsesMainModelValue()
-	if imageModel != mainModel {
+	if imageModel != openAIImagesResponsesMainModel {
 		modified = true
 	}
-	reqBody["model"] = mainModel
+	reqBody["model"] = openAIImagesResponsesMainModel
 	return modified
 }
 
