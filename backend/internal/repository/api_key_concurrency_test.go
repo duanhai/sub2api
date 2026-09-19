@@ -61,6 +61,23 @@ func TestAPIKeyConcurrencyAtomicAdmission(t *testing.T) {
 	require.Equal(t, 6, counts[7])
 }
 
+func TestRegularConcurrencyZeroLimitRemainsDisabled(t *testing.T) {
+	r := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: r.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	cache, ok := NewConcurrencyCache(client, 1, 60).(*concurrencyCache)
+	require.True(t, ok)
+	ctx := context.Background()
+
+	acquired, err := cache.AcquireAccountSlot(ctx, 1, 0, "account-zero")
+	require.NoError(t, err)
+	require.False(t, acquired)
+
+	acquired, err = cache.AcquireUserSlot(ctx, 2, 0, "user-zero")
+	require.NoError(t, err)
+	require.False(t, acquired)
+}
+
 func TestAPIKeyConcurrencyRenewalAndCrashRecovery(t *testing.T) {
 	r := miniredis.RunT(t)
 	now := time.Now()

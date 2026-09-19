@@ -67,6 +67,7 @@ var (
 	// ARGV[1] = maxConcurrency
 	// ARGV[2] = TTL（秒）
 	// ARGV[3] = requestID
+	// ARGV[4] = zeroMeansUnlimited（是否将 maxConcurrency <= 0 视为不限）
 	// 返回 {是否成功, Redis 当前秒}，Go 侧复用同一时间源写活跃索引，省去额外 TIME 往返。
 	acquireScript = redis.NewScript(`
 		-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
@@ -77,6 +78,7 @@ var (
 		local maxConcurrency = tonumber(ARGV[1])
 		local ttl = tonumber(ARGV[2])
 		local requestID = ARGV[3]
+		local zeroMeansUnlimited = tonumber(ARGV[4])
 
 		-- 使用 Redis 服务器时间，确保多实例时钟一致
 		local timeResult = redis.call('TIME')
@@ -97,7 +99,7 @@ var (
 
 		-- 检查是否达到并发上限
 		local count = redis.call('ZCARD', key) + redis.call('ZCARD', liveKey)
-		if maxConcurrency <= 0 or count < maxConcurrency then
+		if (zeroMeansUnlimited == 1 and maxConcurrency <= 0) or count < maxConcurrency then
 			redis.call('ZADD', key, now, requestID)
 			redis.call('EXPIRE', key, ttl)
 			return {1, now}
@@ -636,7 +638,7 @@ func runScriptInt64Pair(ctx context.Context, rdb *redis.Client, script *redis.Sc
 func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := accountSlotKey(accountID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveAccountSlotKey(accountID)}, maxConcurrency, c.slotTTLSeconds, requestID)
+	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveAccountSlotKey(accountID)}, maxConcurrency, c.slotTTLSeconds, requestID, 0)
 	if err != nil {
 		return false, err
 	}
@@ -713,7 +715,7 @@ func (c *concurrencyCache) GetAccountConcurrencyBatch(ctx context.Context, accou
 func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, maxConcurrency int, requestID string) (bool, error) {
 	key := userSlotKey(userID)
 	// 时间戳在 Lua 脚本内使用 Redis TIME 命令获取，确保多实例时钟一致
-	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveUserSlotKey(userID)}, maxConcurrency, c.slotTTLSeconds, requestID)
+	result, now, err := runScriptInt64Pair(ctx, c.rdb, acquireScript, []string{key, liveUserSlotKey(userID)}, maxConcurrency, c.slotTTLSeconds, requestID, 0)
 	if err != nil {
 		return false, err
 	}
@@ -754,7 +756,7 @@ func (c *concurrencyCache) TrackAPIKeySlot(ctx context.Context, apiKeyID int64, 
 // Checking capacity and inserting the member must happen in one Redis script.
 func (c *concurrencyCache) AcquireAPIKeySlot(ctx context.Context, apiKeyID int64, limit int, requestID string) (bool, error) {
 	result, _, err := runScriptInt64Pair(ctx, c.rdb, acquireScript,
-		[]string{apiKeySlotKey(apiKeyID), liveAPIKeySlotKey(apiKeyID)}, limit, c.slotTTLSeconds, requestID)
+		[]string{apiKeySlotKey(apiKeyID), liveAPIKeySlotKey(apiKeyID)}, limit, c.slotTTLSeconds, requestID, 1)
 	return result == 1, err
 }
 
