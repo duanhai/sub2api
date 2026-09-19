@@ -27,6 +27,10 @@ func (s *ConcurrencyService) AcquireAPIKeySlot(ctx context.Context, apiKeyID int
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	return s.acquireAPIKeySlotWithQueue(ctx, apiKeyID, limit, onLeaseLost)
+}
+
+func (s *ConcurrencyService) tryAcquireAPIKeySlot(lifetimeCtx, ctx context.Context, apiKeyID int64, limit int, onLeaseLost func()) (func(), error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -57,7 +61,7 @@ func (s *ConcurrencyService) AcquireAPIKeySlot(ctx context.Context, apiKeyID int
 	if !acquired {
 		return nil, ErrAPIKeyConcurrencyExceeded
 	}
-	return keepAPIKeySlot(ctx, cache, apiKeyID, requestID, limit > 0, onLeaseLost, 20*time.Second), nil
+	return keepAPIKeySlot(lifetimeCtx, cache, apiKeyID, requestID, limit > 0, onLeaseLost, 20*time.Second), nil
 }
 
 func keepAPIKeySlot(ctx context.Context, cache APIKeyConcurrencyLimiter, apiKeyID int64, requestID string, enforce bool, onLeaseLost func(), interval time.Duration) func() {

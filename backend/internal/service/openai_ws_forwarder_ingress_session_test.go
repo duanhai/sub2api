@@ -1393,6 +1393,12 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_PassthroughHeade
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRelaysHTTPStream(t *testing.T) {
+	for label, persistent := range map[string]bool{"legacy": false, "persistent": true} {
+		t.Run(label, func(t *testing.T) { testPersistentReaderHTTPBridgeModeRelaysHTTPStream(t, persistent) })
+	}
+}
+
+func testPersistentReaderHTTPBridgeModeRelaysHTTPStream(t *testing.T, persistent bool) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
@@ -1483,7 +1489,14 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_HTTPBridgeModeRe
 			return
 		}
 
-		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, hooks)
+		forwardCtx := r.Context()
+		if persistent {
+			var stop func()
+			forwardCtx, stop = StartOpenAIWSClientReader(forwardCtx, conn, ResolveOpenAIWSClientReadLimitBytes(cfg))
+			defer stop()
+			ginCtx.Request = ginCtx.Request.WithContext(forwardCtx)
+		}
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(forwardCtx, ginCtx, conn, account, "sk-test", firstMessage, hooks)
 	}))
 	defer wsServer.Close()
 
@@ -4448,6 +4461,12 @@ func (c *openAIWSWriteFailAfterFirstTurnConn) Close() error {
 }
 
 func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnectStillDrainsUpstream(t *testing.T) {
+	for label, persistent := range map[string]bool{"legacy": false, "persistent": true} {
+		t.Run(label, func(t *testing.T) { testPersistentReaderClientDisconnectStillDrainsUpstream(t, persistent) })
+	}
+}
+
+func testPersistentReaderClientDisconnectStillDrainsUpstream(t *testing.T, persistent bool) {
 	gin.SetMode(gin.TestMode)
 
 	cfg := &config.Config{}
@@ -4547,7 +4566,14 @@ func TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_ClientDisconnect
 			return
 		}
 
-		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, hooks)
+		forwardCtx := r.Context()
+		if persistent {
+			var stop func()
+			forwardCtx, stop = StartOpenAIWSClientReader(forwardCtx, conn, ResolveOpenAIWSClientReadLimitBytes(cfg))
+			defer stop()
+			ginCtx.Request = ginCtx.Request.WithContext(forwardCtx)
+		}
+		serverErrCh <- svc.ProxyResponsesWebSocketFromClient(forwardCtx, ginCtx, conn, account, "sk-test", firstMessage, hooks)
 	}))
 	defer wsServer.Close()
 

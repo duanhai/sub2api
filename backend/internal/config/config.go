@@ -10,6 +10,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -926,6 +927,11 @@ type ConcurrencyConfig struct {
 	PingInterval int `mapstructure:"ping_interval"`
 }
 
+type APIKeyQueueConfig struct {
+	MaxWaiting     int `mapstructure:"max_waiting"`
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+}
+
 type ImageConcurrencyConfig struct {
 	// Enabled: 是否启用图片生成独立并发限制，默认关闭以保持现有行为
 	Enabled bool `mapstructure:"enabled"`
@@ -946,6 +952,8 @@ const (
 
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
+	// APIKeyQueues opts database key IDs into bounded admission waiting.
+	APIKeyQueues map[string]APIKeyQueueConfig `mapstructure:"api_key_queues"`
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
@@ -3341,6 +3349,15 @@ func (c *Config) Validate() error {
 		default:
 			return fmt.Errorf("gateway.connection_pool_isolation must be one of: %s/%s/%s",
 				ConnectionPoolIsolationProxy, ConnectionPoolIsolationAccount, ConnectionPoolIsolationAccountProxy)
+		}
+	}
+	for key, p := range c.Gateway.APIKeyQueues {
+		id, err := strconv.ParseInt(key, 10, 64)
+		if err != nil || id <= 0 || strconv.FormatInt(id, 10) != key {
+			return fmt.Errorf("gateway.api_key_queues keys must be positive canonical database IDs, not API secrets")
+		}
+		if p.MaxWaiting < 1 || p.MaxWaiting > 100 || p.TimeoutSeconds < 1 || p.TimeoutSeconds > 60 {
+			return fmt.Errorf("gateway.api_key_queues.%s requires max_waiting in 1..100 and timeout_seconds in 1..60", key)
 		}
 	}
 	if c.Gateway.ImageConcurrency.MaxConcurrentRequests < 0 {

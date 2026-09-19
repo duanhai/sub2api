@@ -2352,6 +2352,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		_ = wsConn.CloseNow()
 	}()
 	wsConn.SetReadLimit(service.ResolveOpenAIWSClientReadLimitBytes(h.cfg))
+	if h.concurrencyHelper.concurrencyService.APIKeyQueueEnabled(apiKey.ID) {
+		var stopReader func()
+		ctx, stopReader = service.StartOpenAIWSClientReader(ctx, wsConn, service.ResolveOpenAIWSClientReadLimitBytes(h.cfg))
+		defer stopReader()
+		c.Request = c.Request.WithContext(ctx)
+	}
 
 	firstMessageTimeout := service.ResolveOpenAIWSClientFirstMessageTimeout(h.cfg)
 	msgType, firstMessage, err := service.ReadOpenAIWSClientMessage(

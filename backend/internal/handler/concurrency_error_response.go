@@ -20,6 +20,12 @@ func concurrencyWSCloseStatus(err error) coderws.StatusCode {
 }
 
 func concurrencyWSReason(err error) string {
+	if errors.Is(err, service.ErrAPIKeyQueueFull) {
+		return "api_key_queue_full: too many pending requests"
+	}
+	if errors.Is(err, service.ErrAPIKeyQueueTimeout) {
+		return "api_key_queue_timeout: timed out waiting for capacity"
+	}
 	if errors.Is(err, service.ErrAPIKeyConcurrencyExceeded) {
 		return "api_key_concurrency_limit: too many concurrent requests, please retry later"
 	}
@@ -32,6 +38,12 @@ const (
 )
 
 func concurrencyErrorResponse(err error, slotType string) (int, string, string, string) {
+	if errors.Is(err, service.ErrAPIKeyQueueFull) {
+		return http.StatusTooManyRequests, "rate_limit_error", "api_key_queue_full", "API key wait queue is full"
+	}
+	if errors.Is(err, service.ErrAPIKeyQueueTimeout) {
+		return http.StatusTooManyRequests, "rate_limit_error", "api_key_queue_timeout", "Timed out waiting for API key capacity"
+	}
 	if errors.Is(err, service.ErrAPIKeyConcurrencyExceeded) {
 		return http.StatusTooManyRequests, "rate_limit_error", "api_key_concurrency_limit",
 			"Concurrency limit exceeded for API key, please retry later"

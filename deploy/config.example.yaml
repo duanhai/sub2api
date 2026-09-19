@@ -209,6 +209,17 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Optional bounded admission waiting, keyed by API key database ID (not secret).
+  # Defaults to disabled. Applies to HTTP gateway requests and Responses WebSocket;
+  # Live sessions retain immediate admission. Requires a positive Key concurrency limit.
+  # Restart to apply; configure identically on all instances. No strict FIFO guarantee.
+  # Pending HTTP requests do not send SSE heartbeats before Key admission; keep the
+  # timeout below client/reverse-proxy first-byte timeouts. User/account waits follow.
+  api_key_queues: {}
+  # api_key_queues:
+  #   "123":
+  #     max_waiting: 3       # 1..100; independent of the Key's execution limit
+  #     timeout_seconds: 20 # 1..60; only the Key-admission wait budget
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
