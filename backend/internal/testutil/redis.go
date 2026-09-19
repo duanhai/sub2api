@@ -26,3 +26,12 @@ func NewRedisGatewayCache(t *testing.T) service.GatewayCache {
 
 	return repository.NewGatewayCache(NewRedisClient(t))
 }
+
+// NewRedisConcurrencyCache exercises the production Lua scripts without Docker.
+func NewRedisConcurrencyCache(t *testing.T) service.ConcurrencyCache {
+	t.Helper()
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() { _ = client.Close() })
+	return repository.NewConcurrencyCache(client, 1, 60)
+}
