@@ -487,10 +487,16 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
 	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
 	updates[SettingKeyOpenAICodexTicketFailClosed] = strconv.FormatBool(settings.OpenAICodexTicketFailClosed)
-	if err := ValidateOpenAICodexTicketTargetLength(settings.OpenAICodexTicketTargetLength); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_TARGET_LENGTH", err.Error())
+	// 0 表示调用方未指定（部分更新、程序化调用）：清空后台键，回退 yaml/默认 292；
+	// 只有显式给出的值才做区间校验。
+	if settings.OpenAICodexTicketTargetLength == 0 {
+		updates[SettingKeyOpenAICodexTicketTargetLength] = ""
+	} else {
+		if err := ValidateOpenAICodexTicketTargetLength(settings.OpenAICodexTicketTargetLength); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_TARGET_LENGTH", err.Error())
+		}
+		updates[SettingKeyOpenAICodexTicketTargetLength] = strconv.Itoa(settings.OpenAICodexTicketTargetLength)
 	}
-	updates[SettingKeyOpenAICodexTicketTargetLength] = strconv.Itoa(settings.OpenAICodexTicketTargetLength)
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
 	}
