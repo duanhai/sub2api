@@ -4550,6 +4550,23 @@
                 </div>
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketProbeInterval") }}
+                  </h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketProbeIntervalDesc") }}
+                  </p>
+                  <input
+                    id="codex-ticket-probe-interval"
+                    v-model.number="form.openai_codex_ticket_harvest_probe_interval_seconds"
+                    type="number"
+                    min="5"
+                    max="600"
+                    step="1"
+                    class="input mt-3 w-40 font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexTicketHarvestProxy") }}
                   </h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -10034,6 +10051,7 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_enabled: false,
   openai_codex_ticket_fail_closed: false,
   openai_codex_ticket_target_length: 292,
+  openai_codex_ticket_harvest_probe_interval_seconds: 6,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   // codex_cli_only 加固
@@ -11646,6 +11664,8 @@ async function saveSettings() {
       openai_codex_ticket_fail_closed: form.openai_codex_ticket_fail_closed,
       openai_codex_ticket_target_length:
         Math.floor(Number(form.openai_codex_ticket_target_length)) || 292,
+      openai_codex_ticket_harvest_probe_interval_seconds:
+        Math.floor(Number(form.openai_codex_ticket_harvest_probe_interval_seconds)) || 6,
       openai_codex_ticket_harvest_proxy_url:
         form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
       min_codex_version: form.min_codex_version?.trim() || "",

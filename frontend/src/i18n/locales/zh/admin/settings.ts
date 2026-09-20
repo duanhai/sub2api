@@ -576,6 +576,9 @@ export default {
         codexTicketTargetLength: '门票目标长度',
         codexTicketTargetLengthDesc:
           '只接受并注入长度恰好等于此值的 x-codex-turn-state，默认 292。上游铸票格式会漂移（探测日志里出现大量 http 200 但 len 为其他值即为信号），可在此调整，保存后 5 秒内生效、无需重启。改成当前常见长度意味着探测到的票几乎都会被注入，请先确认这类票对业务无副作用。允许范围 64 到 4096。',
+        codexTicketProbeInterval: '打票探测周期（秒）',
+        codexTicketProbeIntervalDesc:
+          '打票器每隔多少秒对缺票或临近过期的账号打一次探测，默认 6。探测会叠加到账号自身的请求频率上，过密会招来上游 429，并可能连带把业务请求也拖进限流。命中 429 后会按账号自动指数退避，最长 5 分钟。允许范围 5 到 600，保存后 5 秒内生效。',
         codexTicketHarvestProxy: '292 打票代理',
         codexTicketHarvestProxyDesc:
           '仅在门票功能开启时用于打票，保存后后续探测会使用新代理，无需重启。日常业务仍走账号自己的住宅代理。填写完整代理 URL（http 或 socks5h，含用户名和密码）。代理服务商需自行负责出口 IP 轮换。留空并保存表示不改已保存的值。',

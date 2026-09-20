@@ -243,24 +243,25 @@ type UpdateSettingsRequest struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
-	OpenAITTFTMode                         *string `json:"openai_ttft_mode"`
-	EnableFingerprintUnification           *bool   `json:"enable_fingerprint_unification"`
-	EnableMetadataPassthrough              *bool   `json:"enable_metadata_passthrough"`
-	EnableCCHSigning                       *bool   `json:"enable_cch_signing"`
-	EnableClaudeOAuthSystemPromptInjection *bool   `json:"enable_claude_oauth_system_prompt_injection"`
-	ClaudeOAuthSystemPrompt                *string `json:"claude_oauth_system_prompt"`
-	ClaudeOAuthSystemPromptBlocks          *string `json:"claude_oauth_system_prompt_blocks"`
-	EnableAnthropicCacheTTL1hInjection     *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
-	RewriteMessageCacheControl             *bool   `json:"rewrite_message_cache_control"`
-	EnableClientDatelineNormalization      *bool   `json:"enable_client_dateline_normalization"`
-	AntigravityUserAgentVersion            *string `json:"antigravity_user_agent_version"`
-	OpenAICodexUserAgent                   *string `json:"openai_codex_user_agent"`
-	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
-	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
-	OpenAICodexTicketEnabled               *bool   `json:"openai_codex_ticket_enabled"`
-	OpenAICodexTicketFailClosed            *bool   `json:"openai_codex_ticket_fail_closed"`
-	OpenAICodexTicketTargetLength          *int    `json:"openai_codex_ticket_target_length"`
-	OpenAICodexTicketHarvestProxyURL       string  `json:"openai_codex_ticket_harvest_proxy_url"`
+	OpenAITTFTMode                               *string `json:"openai_ttft_mode"`
+	EnableFingerprintUnification                 *bool   `json:"enable_fingerprint_unification"`
+	EnableMetadataPassthrough                    *bool   `json:"enable_metadata_passthrough"`
+	EnableCCHSigning                             *bool   `json:"enable_cch_signing"`
+	EnableClaudeOAuthSystemPromptInjection       *bool   `json:"enable_claude_oauth_system_prompt_injection"`
+	ClaudeOAuthSystemPrompt                      *string `json:"claude_oauth_system_prompt"`
+	ClaudeOAuthSystemPromptBlocks                *string `json:"claude_oauth_system_prompt_blocks"`
+	EnableAnthropicCacheTTL1hInjection           *bool   `json:"enable_anthropic_cache_ttl_1h_injection"`
+	RewriteMessageCacheControl                   *bool   `json:"rewrite_message_cache_control"`
+	EnableClientDatelineNormalization            *bool   `json:"enable_client_dateline_normalization"`
+	AntigravityUserAgentVersion                  *string `json:"antigravity_user_agent_version"`
+	OpenAICodexUserAgent                         *string `json:"openai_codex_user_agent"`
+	OpenAICodexClientVersion                     *string `json:"openai_codex_client_version"`
+	OpenAICodexVersionAutoSyncEnabled            *bool   `json:"openai_codex_version_auto_sync_enabled"`
+	OpenAICodexTicketEnabled                     *bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketFailClosed                  *bool   `json:"openai_codex_ticket_fail_closed"`
+	OpenAICodexTicketTargetLength                *int    `json:"openai_codex_ticket_target_length"`
+	OpenAICodexTicketHarvestProbeIntervalSeconds *int    `json:"openai_codex_ticket_harvest_probe_interval_seconds"`
+	OpenAICodexTicketHarvestProxyURL             string  `json:"openai_codex_ticket_harvest_proxy_url"`
 
 	// codex_cli_only 加固（global-only）
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -1790,6 +1791,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketTargetLength
 		}(),
+		OpenAICodexTicketHarvestProbeIntervalSeconds: func() int {
+			if req.OpenAICodexTicketHarvestProbeIntervalSeconds != nil {
+				return *req.OpenAICodexTicketHarvestProbeIntervalSeconds
+			}
+			return previousSettings.OpenAICodexTicketHarvestProbeIntervalSeconds
+		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2342,6 +2349,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
 		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
 		OpenAICodexTicketTargetLength:                          updatedSettings.OpenAICodexTicketTargetLength,
+		OpenAICodexTicketHarvestProbeIntervalSeconds:           updatedSettings.OpenAICodexTicketHarvestProbeIntervalSeconds,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,

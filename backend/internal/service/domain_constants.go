@@ -720,6 +720,9 @@ const (
 	// SettingKeyOpenAICodexTicketTargetLength Codex 292 门票目标长度（后台可改、热更新）。
 	// 只接受并注入长度恰好等于该值的 x-codex-turn-state；缺失/非法回退 yaml（默认 292）。
 	SettingKeyOpenAICodexTicketTargetLength = "openai_codex_ticket_target_length"
+	// SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds 打票探测周期（秒，后台可改、热更新）。
+	// 缺失/非法回退 yaml（默认 6）。探测本身会叠加到账号请求频率上，过密会招来上游 429。
+	SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds = "openai_codex_ticket_harvest_probe_interval_seconds"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

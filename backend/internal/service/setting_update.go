@@ -497,6 +497,15 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		}
 		updates[SettingKeyOpenAICodexTicketTargetLength] = strconv.Itoa(settings.OpenAICodexTicketTargetLength)
 	}
+	// 同上：0 视为未指定，清空后台键回退 yaml/默认。
+	if settings.OpenAICodexTicketHarvestProbeIntervalSeconds == 0 {
+		updates[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = ""
+	} else {
+		if err := ValidateOpenAICodexTicketHarvestProbeInterval(settings.OpenAICodexTicketHarvestProbeIntervalSeconds); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_PROBE_INTERVAL", err.Error())
+		}
+		updates[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = strconv.Itoa(settings.OpenAICodexTicketHarvestProbeIntervalSeconds)
+	}
 	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
 		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
 	}
@@ -758,6 +767,7 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.InvalidateOpenAICodexTicketEnabledCache()
 	s.InvalidateOpenAICodexTicketFailClosedCache()
 	s.InvalidateOpenAICodexTicketTargetLengthCache()
+	s.InvalidateOpenAICodexTicketHarvestProbeIntervalCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{

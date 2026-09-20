@@ -105,3 +105,20 @@ func TestSettingsCodexTicketTargetLengthWriteReadValidate(t *testing.T) {
 	require.Equal(t, http.StatusOK, get.Code)
 	require.Contains(t, get.Body.String(), `"openai_codex_ticket_target_length":312`)
 }
+
+func TestSettingsCodexTicketProbeIntervalWriteReadValidate(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	require.Equal(t, 6, h.settingService.GetOpenAICodexTicketHarvestProbeIntervalSeconds(context.Background(), 6))
+	rec := doUpdateSettings(t, h, map[string]any{key: 30}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "30", repo.values[key])
+	require.Equal(t, 30, h.settingService.GetOpenAICodexTicketHarvestProbeIntervalSeconds(context.Background(), 6))
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_harvest_probe_interval_seconds":30`)
+	rec = doUpdateSettings(t, h, map[string]any{key: 2}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "30", repo.values[key])
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "30", repo.values[key])
+}

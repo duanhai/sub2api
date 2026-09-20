@@ -396,6 +396,30 @@ func (s *SettingService) InvalidateOpenAICodexTicketTargetLengthCache() {
 	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketTargetLengthCache, &s.openAICodexTicketTargetLengthSF, SettingKeyOpenAICodexTicketTargetLength)
 }
 
+// GetOpenAICodexTicketHarvestProbeIntervalSeconds 返回后台配置的打票探测周期（秒）。
+// 设置缺失、非法或不在允许区间时回退 fallback（yaml/env，再回退 6）。
+func (s *SettingService) GetOpenAICodexTicketHarvestProbeIntervalSeconds(ctx context.Context, fallback int) int {
+	if s == nil {
+		return fallback
+	}
+	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketProbeIntervalCache, &s.openAICodexTicketProbeIntervalSF, SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds)
+	if !ok || raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || ValidateOpenAICodexTicketHarvestProbeInterval(n) != nil {
+		return fallback
+	}
+	return n
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketHarvestProbeIntervalCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketProbeIntervalCache, &s.openAICodexTicketProbeIntervalSF, SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds)
+}
+
 type cachedOpenAICodexTicketHarvestProxy struct {
 	value     string
 	expiresAt int64

@@ -583,6 +583,9 @@ export default {
         codexTicketTargetLength: "Ticket target length",
         codexTicketTargetLengthDesc:
           "Only x-codex-turn-state values of exactly this length are stored and injected (default 292). The upstream mint format drifts; many probe misses with HTTP 200 and a different len are the signal. Changes apply within seconds without a restart. Setting it to the currently common length means nearly every probed ticket gets injected, so confirm such tickets are harmless first. Allowed range 64 to 4096.",
+        codexTicketProbeInterval: "Harvest probe interval (seconds)",
+        codexTicketProbeIntervalDesc:
+          "How often the harvester probes accounts that lack a ticket or are about to expire (default 6). Probes add to the account's own request rate; too dense a cadence draws upstream 429s and can drag production requests into the same throttle. After a 429 the harvester backs off exponentially per account, up to 5 minutes. Allowed range 5 to 600, applies within seconds.",
         codexTicketHarvestProxy: "292 harvest proxy",
         codexTicketHarvestProxyDesc:
           "Used only for minting 292 tickets when the ticket feature is enabled. Changes apply to subsequent probes without a restart. Production traffic still uses each account's residential proxy. Paste a full HTTP or SOCKS5h proxy URL including username and password. The proxy provider must handle IP rotation. Leave blank when saving to keep the stored value.",

@@ -33,7 +33,62 @@ const (
 	openAICodexTicketDefaultTargetLength = 292
 	openAICodexTicketMinTargetLength     = 64
 	openAICodexTicketMaxTargetLength     = 4096
+	// 探测周期：默认 6 秒是原设计；生产上叠加业务流量会招来上游 429，因此可热改。
+	openAICodexTicketDefaultProbeIntervalSeconds = 6
+	openAICodexTicketMinProbeIntervalSeconds     = 5
+	openAICodexTicketMaxProbeIntervalSeconds     = 600
+	// 429 退避：按账号累计连续 429 次数，退避 = 探测周期 × 2^(n-1)，上限 5 分钟。
+	openAICodexTicketBackoffMax = 5 * time.Minute
 )
+
+// ValidateOpenAICodexTicketHarvestProbeInterval 校验后台提交的探测周期（秒）。
+func ValidateOpenAICodexTicketHarvestProbeInterval(n int) error {
+	if n < openAICodexTicketMinProbeIntervalSeconds || n > openAICodexTicketMaxProbeIntervalSeconds {
+		return fmt.Errorf("codex ticket probe interval must be between %d and %d seconds", openAICodexTicketMinProbeIntervalSeconds, openAICodexTicketMaxProbeIntervalSeconds)
+	}
+	return nil
+}
+
+// openAICodexTicketBackoff 是单个账号的 429 退避状态。上游限流按账号计，
+// 不按模型，所以两模型共用一份。
+type openAICodexTicketBackoff struct {
+	consecutive429 int
+	until          time.Time
+}
+
+func (s *OpenAIGatewayService) openAICodexTicketBackoffFor(accountID int64) openAICodexTicketBackoff {
+	if raw, ok := s.openaiCodexTicketBackoff.Load(accountID); ok {
+		if b, ok := raw.(openAICodexTicketBackoff); ok {
+			return b
+		}
+	}
+	return openAICodexTicketBackoff{}
+}
+
+// noteOpenAICodexTicketProbe429 记录一次 429 并延长退避窗口，返回本次退避时长。
+func (s *OpenAIGatewayService) noteOpenAICodexTicketProbe429(accountID int64, now time.Time, base time.Duration) time.Duration {
+	b := s.openAICodexTicketBackoffFor(accountID)
+	b.consecutive429++
+	if base <= 0 {
+		base = time.Duration(openAICodexTicketDefaultProbeIntervalSeconds) * time.Second
+	}
+	wait := base
+	for i := 1; i < b.consecutive429 && wait < openAICodexTicketBackoffMax; i++ {
+		wait *= 2
+	}
+	if wait > openAICodexTicketBackoffMax {
+		wait = openAICodexTicketBackoffMax
+	}
+	b.until = now.Add(wait)
+	s.openaiCodexTicketBackoff.Store(accountID, b)
+	return wait
+}
+
+// clearOpenAICodexTicketBackoff 在任何非 429 的探测结果后重置：拿到票、312 miss、
+// 甚至 5xx，都说明上游没有在按频率拒绝我们。
+func (s *OpenAIGatewayService) clearOpenAICodexTicketBackoff(accountID int64) {
+	s.openaiCodexTicketBackoff.Delete(accountID)
+}
 
 // ValidateOpenAICodexTicketTargetLength 校验后台提交的门票目标长度。
 func ValidateOpenAICodexTicketTargetLength(n int) error {
@@ -82,6 +137,7 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 	}
 	if s != nil && s.settingService != nil {
 		cfg.TargetLength = s.settingService.GetOpenAICodexTicketTargetLength(context.Background(), cfg.TargetLength)
+		cfg.HarvestProbeIntervalSeconds = s.settingService.GetOpenAICodexTicketHarvestProbeIntervalSeconds(context.Background(), cfg.HarvestProbeIntervalSeconds)
 	}
 	if cfg.TargetLength <= 0 {
 		cfg.TargetLength = openAICodexTicketDefaultTargetLength
@@ -93,7 +149,7 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 		cfg.RefreshBeforeSeconds = 600
 	}
 	if cfg.HarvestProbeIntervalSeconds <= 0 {
-		cfg.HarvestProbeIntervalSeconds = 6
+		cfg.HarvestProbeIntervalSeconds = openAICodexTicketDefaultProbeIntervalSeconds
 	}
 	if cfg.HarvestAttemptTimeoutSeconds <= 0 {
 		cfg.HarvestAttemptTimeoutSeconds = 25
@@ -477,6 +533,7 @@ func (s *OpenAIGatewayService) StartOpenAICodexTicketHarvester() {
 	logger.L().Info("openai_codex_ticket harvester started",
 		zap.Int("ttl_seconds", s.openAICodexTicketConfig().TTLSeconds),
 		zap.Int("target_length", s.openAICodexTicketConfig().TargetLength),
+		zap.Int("probe_interval_seconds", s.openAICodexTicketConfig().HarvestProbeIntervalSeconds),
 		zap.Strings("models", s.openAICodexTicketConfig().Models),
 	)
 }
@@ -531,6 +588,14 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 	for i := range accounts {
 		account := accounts[i]
 		if account.Status != StatusActive || !isOpenAICodexTicketAccount(&account) {
+			continue
+		}
+		// 上游按账号限流：该账号处于 429 退避窗口内则本周期整体跳过，不再叠加请求。
+		if b := s.openAICodexTicketBackoffFor(account.ID); now.Before(b.until) {
+			logger.L().Info("openai_codex_ticket probe backoff",
+				zap.Int64("account_id", account.ID),
+				zap.Int("consecutive_429", b.consecutive429),
+				zap.Int64("remaining_seconds", int64(b.until.Sub(now)/time.Second)))
 			continue
 		}
 		for _, model := range cfg.Models {
@@ -588,6 +653,15 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 				zap.String("reason", "error"), zap.Error(perr))
 			return nil, nil
 		}
+		if status == http.StatusTooManyRequests {
+			wait := s.noteOpenAICodexTicketProbe429(account.ID, time.Now(), time.Duration(cfg.HarvestProbeIntervalSeconds)*time.Second)
+			logger.L().Warn("openai_codex_ticket probe rate limited",
+				zap.Int64("account_id", account.ID), zap.String("model", model),
+				zap.Int("consecutive_429", s.openAICodexTicketBackoffFor(account.ID).consecutive429),
+				zap.Int64("backoff_seconds", int64(wait/time.Second)))
+			return nil, nil
+		}
+		s.clearOpenAICodexTicketBackoff(account.ID)
 		if status != http.StatusOK || state == "" || len(state) != cfg.TargetLength || !strings.HasPrefix(state, openAICodexTicketStatePrefix) {
 			logger.L().Info("openai_codex_ticket probe miss",
 				zap.Int64("account_id", account.ID), zap.String("model", model),
