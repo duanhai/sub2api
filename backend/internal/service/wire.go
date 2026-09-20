@@ -441,8 +441,9 @@ func ProvideDeferredService(accountRepo AccountRepository, timingWheel *TimingWh
 }
 
 // ProvideConcurrencyService creates ConcurrencyService and starts slot cleanup worker.
-func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config) *ConcurrencyService {
+func ProvideConcurrencyService(cache ConcurrencyCache, accountRepo AccountRepository, cfg *config.Config, settings *SettingService) *ConcurrencyService {
 	svc := NewConcurrencyService(cache)
+	svc.SetAPIKeyQueueSettings(settings)
 	if cfg != nil {
 		svc.ConfigureAPIKeyQueues(cfg.Gateway.APIKeyQueues)
 	}

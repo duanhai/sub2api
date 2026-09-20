@@ -1,5 +1,20 @@
 export default {
     settings: {
+      apiKeyQueue: {
+        title: 'API Key 并发排队',
+        description: '所有已设置并发上限的 Key 自动使用各自的上限，满额后在自己的队列等待。等待不占用户或上游账号的并发名额；上限为 0 的 Key 不排队。',
+        enabled: '启用并发排队',
+        maxWaiting: '每个 Key 最多等待请求数（1–100）',
+        timeout: '最长等待时间（1–60 秒）',
+        legacy: '尚未保存面板设置。若之前配置过 YAML 排队规则，仍按旧规则运行；首次保存后统一以面板为准。',
+        effect: '单独保存后无需重启，多实例最长约 5 秒同步。新 HTTP 请求生效；已有 WebSocket 连接需重连。在途请求继续按原规则完成。队列满或等待超时会报错，不保证严格先来先处理。',
+        save: '保存排队设置',
+        saved: '排队设置已保存',
+        retry: '重新加载',
+        invalid: '等待请求数须为 1–100 的整数，等待时间须为 1–60 的整数。',
+        loadFailed: '排队设置加载失败，请重试。',
+        saveFailed: '排队设置保存失败，请重试。',
+      },
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {

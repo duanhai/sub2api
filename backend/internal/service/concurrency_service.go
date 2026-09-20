@@ -229,8 +229,9 @@ const (
 
 // ConcurrencyService 管理账号和用户的并发限制。
 type ConcurrencyService struct {
-	cache        ConcurrencyCache
-	apiKeyQueues map[int64]apiKeyQueuePolicy // immutable after construction
+	cache               ConcurrencyCache
+	apiKeyQueues        map[int64]apiKeyQueuePolicy // immutable after construction
+	apiKeyQueueSettings *SettingService
 
 	accountLoadCacheTTL atomic.Int64
 	accountLoadCacheMu  sync.RWMutex

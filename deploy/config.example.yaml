@@ -209,6 +209,8 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Legacy fallback only. Prefer System Settings > Gateway > API Key concurrency queue.
+  # Once panel settings are saved, they override this map, including when disabled.
   # Optional bounded admission waiting, keyed by API key database ID (not secret).
   # Defaults to disabled. Applies to HTTP gateway requests and Responses WebSocket;
   # Live sessions retain immediate admission. Requires a positive Key concurrency limit.

@@ -8,6 +8,11 @@ import zhCommon from "@/i18n/locales/zh/common";
 import zhSettings from "@/i18n/locales/zh/admin/settings";
 import SettingsView from "../SettingsView.vue";
 
+vi.mock('@/api/admin/apiKeyQueue', () => ({
+  getAPIKeyQueueSettings: vi.fn().mockResolvedValue({ enabled: false, max_waiting: 6, timeout_seconds: 60, configured: true }),
+  updateAPIKeyQueueSettings: vi.fn().mockImplementation(async value => ({ ...value, configured: true })),
+}));
+
 const {
   getSettings,
   updateSettings,

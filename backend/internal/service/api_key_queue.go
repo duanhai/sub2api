@@ -38,15 +38,45 @@ func (s *ConcurrencyService) ConfigureAPIKeyQueues(policies map[string]config.AP
 	}
 }
 
-func (s *ConcurrencyService) APIKeyQueueEnabled(id int64) bool {
-	return s != nil && s.apiKeyQueues[id].maxWaiting > 0
+// SetAPIKeyQueueSettings attaches runtime settings at startup.
+func (s *ConcurrencyService) SetAPIKeyQueueSettings(settings *SettingService) {
+	s.apiKeyQueueSettings = settings
+}
+
+type apiKeyQueuePolicyContextKey struct{}
+
+// WithAPIKeyQueuePolicy pins a WS connection's policy before its first read.
+// Enabling waiting mid-connection without a persistent reader would hide peer
+// disconnects. New connections see new settings; active connections finish safely.
+func (s *ConcurrencyService) WithAPIKeyQueuePolicy(ctx context.Context, id int64) (context.Context, bool) {
+	p := s.resolveAPIKeyQueuePolicy(ctx, id)
+	return context.WithValue(ctx, apiKeyQueuePolicyContextKey{}, p), p.maxWaiting > 0
+}
+
+func (s *ConcurrencyService) resolveAPIKeyQueuePolicy(ctx context.Context, id int64) apiKeyQueuePolicy {
+	if p, ok := ctx.Value(apiKeyQueuePolicyContextKey{}).(apiKeyQueuePolicy); ok {
+		return p
+	}
+	if s == nil {
+		return apiKeyQueuePolicy{}
+	}
+	if settings := s.apiKeyQueueSettings.apiKeyQueueRuntimeSettings(ctx); settings != nil {
+		if settings.Enabled {
+			return apiKeyQueuePolicy{settings.MaxWaiting, time.Duration(settings.TimeoutSeconds) * time.Second}
+		}
+		return apiKeyQueuePolicy{}
+	}
+	return s.apiKeyQueues[id]
 }
 
 func (s *ConcurrencyService) acquireAPIKeySlotWithQueue(ctx context.Context, id int64, limit int, onLeaseLost func()) (func(), error) {
-	if limit <= 0 || !s.APIKeyQueueEnabled(id) {
+	if limit <= 0 {
 		return s.tryAcquireAPIKeySlot(ctx, ctx, id, limit, onLeaseLost)
 	}
-	p := s.apiKeyQueues[id]
+	p := s.resolveAPIKeyQueuePolicy(ctx, id)
+	if p.maxWaiting <= 0 {
+		return s.tryAcquireAPIKeySlot(ctx, ctx, id, limit, onLeaseLost)
+	}
 	waitCtx, cancel := context.WithTimeout(ctx, p.timeout)
 	defer cancel()
 	// Only admission observes socket disconnection. An acquired slot retains

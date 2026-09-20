@@ -18,6 +18,12 @@ import (
 )
 
 func TestAPIKeyQueueFiveRequestsAndCrossInstanceCapacity(t *testing.T) {
+	for name, panel := range map[string]bool{"yaml": false, "panel": true} {
+		t.Run(name, func(t *testing.T) { testAPIKeyQueueFiveRequests(t, panel) })
+	}
+}
+
+func testAPIKeyQueueFiveRequests(t *testing.T, panel bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	rdb := testutil.NewRedisClient(t)
@@ -25,6 +31,11 @@ func TestAPIKeyQueueFiveRequestsAndCrossInstanceCapacity(t *testing.T) {
 	a, b := service.NewConcurrencyService(cache), service.NewConcurrencyService(cache)
 	for _, svc := range []*service.ConcurrencyService{a, b} {
 		svc.ConfigureAPIKeyQueues(map[string]config.APIKeyQueueConfig{"1": {MaxWaiting: 3, TimeoutSeconds: 3}})
+		if panel {
+			settings := service.NewSettingService(&contentModerationHandlerSettingRepo{}, nil)
+			require.NoError(t, settings.SetAPIKeyQueueSettings(ctx, service.APIKeyQueueSettings{Enabled: true, MaxWaiting: 3, TimeoutSeconds: 3}))
+			svc.SetAPIKeyQueueSettings(settings)
+		}
 	}
 	first, err := a.AcquireAPIKeySlot(ctx, 1, 2, nil)
 	require.NoError(t, err)
@@ -49,8 +60,10 @@ func TestAPIKeyQueueFiveRequestsAndCrossInstanceCapacity(t *testing.T) {
 	// Other keys are not blocked by this queue.
 	other, err := a.AcquireAPIKeySlot(ctx, 2, 1, nil)
 	require.NoError(t, err)
-	_, err = b.AcquireAPIKeySlot(ctx, 2, 1, nil)
-	require.ErrorIs(t, err, service.ErrAPIKeyConcurrencyExceeded)
+	if !panel {
+		_, err = b.AcquireAPIKeySlot(ctx, 2, 1, nil)
+		require.ErrorIs(t, err, service.ErrAPIKeyConcurrencyExceeded)
+	}
 	other()
 	first()
 	for i := 0; i < 3; i++ {

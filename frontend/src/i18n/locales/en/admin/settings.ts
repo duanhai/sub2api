@@ -1,5 +1,20 @@
 export default {
     settings: {
+      apiKeyQueue: {
+        title: 'API Key concurrency queue',
+        description: 'Keys with a positive concurrency limit automatically use their own limit and wait in a separate queue when full. Waiters do not occupy user or upstream account slots. Keys with a zero limit do not queue.',
+        enabled: 'Enable concurrency waiting',
+        maxWaiting: 'Maximum waiting requests per Key (1–100)',
+        timeout: 'Maximum wait (1–60 seconds)',
+        legacy: 'Panel settings have not been saved. Existing YAML queue rules still apply; saving here replaces them with this global policy.',
+        effect: 'Save separately; no restart required. Other instances sync within about 5 seconds. Applies to new HTTP requests; existing WebSocket connections must reconnect. In-flight requests retain their policy. Full queues and timeouts return errors; strict FIFO is not guaranteed.',
+        save: 'Save queue settings',
+        saved: 'Queue settings saved',
+        retry: 'Reload',
+        invalid: 'Waiting capacity must be an integer from 1–100 and timeout an integer from 1–60.',
+        loadFailed: 'Could not load queue settings. Please retry.',
+        saveFailed: 'Could not save queue settings. Please retry.',
+      },
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {
