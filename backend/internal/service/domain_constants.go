@@ -713,6 +713,13 @@ const (
 	SettingKeyOpenAICodexTicketEnabled = "openai_codex_ticket_enabled"
 	// SettingKeyOpenAICodexTicketHarvestProxyURL Codex 292 打票出口（socks5h/http），后台可改、热更新。
 	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
+	// SettingKeyOpenAICodexTicketFailClosed Codex 292 缺票拦截（后台可改、热更新）。
+	// 关闭（默认）：无有效门票时不注入、不拦截，按客户端原样转发，由上游决定。
+	// 开启：无有效门票的账号对门控模型暂停调度；出站前仍无票则该请求直接失败。
+	SettingKeyOpenAICodexTicketFailClosed = "openai_codex_ticket_fail_closed"
+	// SettingKeyOpenAICodexTicketTargetLength Codex 292 门票目标长度（后台可改、热更新）。
+	// 只接受并注入长度恰好等于该值的 x-codex-turn-state；缺失/非法回退 yaml（默认 292）。
+	SettingKeyOpenAICodexTicketTargetLength = "openai_codex_ticket_target_length"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

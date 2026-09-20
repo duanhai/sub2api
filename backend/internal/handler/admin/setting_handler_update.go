@@ -258,6 +258,8 @@ type UpdateSettingsRequest struct {
 	OpenAICodexClientVersion               *string `json:"openai_codex_client_version"`
 	OpenAICodexVersionAutoSyncEnabled      *bool   `json:"openai_codex_version_auto_sync_enabled"`
 	OpenAICodexTicketEnabled               *bool   `json:"openai_codex_ticket_enabled"`
+	OpenAICodexTicketFailClosed            *bool   `json:"openai_codex_ticket_fail_closed"`
+	OpenAICodexTicketTargetLength          *int    `json:"openai_codex_ticket_target_length"`
 	OpenAICodexTicketHarvestProxyURL       string  `json:"openai_codex_ticket_harvest_proxy_url"`
 
 	// codex_cli_only 加固（global-only）
@@ -1776,6 +1778,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketEnabled
 		}(),
+		OpenAICodexTicketFailClosed: func() bool {
+			if req.OpenAICodexTicketFailClosed != nil {
+				return *req.OpenAICodexTicketFailClosed
+			}
+			return previousSettings.OpenAICodexTicketFailClosed
+		}(),
+		OpenAICodexTicketTargetLength: func() int {
+			if req.OpenAICodexTicketTargetLength != nil {
+				return *req.OpenAICodexTicketTargetLength
+			}
+			return previousSettings.OpenAICodexTicketTargetLength
+		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2326,6 +2340,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
+		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
+		OpenAICodexTicketTargetLength:                          updatedSettings.OpenAICodexTicketTargetLength,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,

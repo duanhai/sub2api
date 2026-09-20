@@ -570,6 +570,12 @@ export default {
         codexTicketEnabled: '292 打票',
         codexTicketEnabledDesc:
           '关闭后不打票、不注入 x-codex-turn-state，按原链路转发。开启后后台打票，并在业务请求中覆盖该头。',
+        codexTicketFailClosed: '缺票拦截',
+        codexTicketFailClosedDesc:
+          '默认关闭：没有有效门票时不注入、不拦截，按客户端原样转发，由上游决定是否接受，打票故障不影响业务。开启后没有有效门票的账号会对门控模型暂停调度，打票代理故障将直接导致这些模型不可用。保存后立即生效，无需重启。',
+        codexTicketTargetLength: '门票目标长度',
+        codexTicketTargetLengthDesc:
+          '只接受并注入长度恰好等于此值的 x-codex-turn-state，默认 292。上游铸票格式会漂移（探测日志里出现大量 http 200 但 len 为其他值即为信号），可在此调整，保存后 5 秒内生效、无需重启。改成当前常见长度意味着探测到的票几乎都会被注入，请先确认这类票对业务无副作用。允许范围 64 到 4096。',
         codexTicketHarvestProxy: '292 打票代理',
         codexTicketHarvestProxyDesc:
           '仅在门票功能开启时用于打票，保存后后续探测会使用新代理，无需重启。日常业务仍走账号自己的住宅代理。填写完整代理 URL（http 或 socks5h，含用户名和密码）。代理服务商需自行负责出口 IP 轮换。留空并保存表示不改已保存的值。',

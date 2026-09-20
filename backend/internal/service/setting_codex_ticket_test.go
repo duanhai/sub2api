@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,4 +118,121 @@ func TestCodexTicketSettingsRefreshDoesNotMutateSharedConfig(t *testing.T) {
 	svc.refreshCachedSettings(&SystemSettings{OpenAICodexTicketEnabled: true})
 	require.False(t, cfg.Gateway.OpenAICodexTicket.Enabled, "runtime settings must not write the shared immutable startup configuration")
 	require.True(t, svc.GetOpenAICodexTicketEnabled(context.Background(), false))
+}
+
+// 缺票拦截是后台热开关：yaml 只是回退值，后台一改立即生效、无需重启。
+func TestCodexTicketFailClosedRuntimeSettingOverridesYaml(t *testing.T) {
+	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
+	settings := NewSettingService(repo, &config.Config{})
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, FailClosed: true}, nil)
+	svc.settingService = settings
+	account := ticketTestAccount(41) // 无票
+
+	// 后台未设置 → 跟随 yaml（严格模式）：无票账号暂停调度，出站直接失败。
+	require.True(t, svc.openAICodexTicketFailClosed())
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+	h := http.Header{}
+	h.Set(openAICodexTurnStateHeader, "client-state")
+	require.ErrorIs(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h), ErrOpenAICodexTicketUnavailable)
+
+	// 后台关闭缺票拦截 → 不拦号、不碰请求头，客户端自带的 turn-state 原样放行。
+	repo.values[SettingKeyOpenAICodexTicketFailClosed] = "false"
+	settings.InvalidateOpenAICodexTicketFailClosedCache()
+	require.False(t, svc.openAICodexTicketFailClosed())
+	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+	h = http.Header{}
+	h.Set(openAICodexTurnStateHeader, "client-state")
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, "client-state", h.Get(openAICodexTurnStateHeader))
+
+	// 再次开启 → 恢复拦截。
+	repo.values[SettingKeyOpenAICodexTicketFailClosed] = "true"
+	settings.InvalidateOpenAICodexTicketFailClosedCache()
+	require.True(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+	h = http.Header{}
+	require.ErrorIs(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h), ErrOpenAICodexTicketUnavailable)
+}
+
+// 默认（yaml 未写 fail_closed、后台未设置）就是放行：门票是增强能力，不是业务前置条件。
+func TestCodexTicketFailClosedDefaultsToFailOpen(t *testing.T) {
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, nil)
+	account := ticketTestAccount(41)
+	require.False(t, svc.openAICodexTicketFailClosed())
+	require.False(t, svc.openAICodexTicketBlocksAccount(account, "gpt-6-astra"))
+	h := http.Header{}
+	h.Set(openAICodexTurnStateHeader, "client-state")
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, "client-state", h.Get(openAICodexTurnStateHeader))
+}
+
+func TestCodexTicketFailClosedSettingDoesNotMutateSharedConfig(t *testing.T) {
+	cfg := &config.Config{}
+	svc := NewSettingService(&codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{SettingKeyOpenAICodexTicketFailClosed: "true"}}}, cfg)
+	svc.refreshCachedSettings(&SystemSettings{OpenAICodexTicketFailClosed: true})
+	require.False(t, cfg.Gateway.OpenAICodexTicket.FailClosed, "runtime settings must not write the shared immutable startup configuration")
+	require.True(t, svc.GetOpenAICodexTicketFailClosed(context.Background(), false))
+}
+
+// 目标长度是后台热设置：上游铸票格式漂移（生产曾长期只见 312）时无需改 yaml、无需重启。
+func TestCodexTicketTargetLengthRuntimeSettingOverridesYaml(t *testing.T) {
+	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
+	settings := NewSettingService(repo, &config.Config{})
+	state312 := fakeCodexTicketState(312)
+	mk := func() *http.Response {
+		h := http.Header{}
+		h.Set(openAICodexTurnStateHeader, state312)
+		return &http.Response{StatusCode: http.StatusOK, Header: h, Body: io.NopCloser(strings.NewReader("data: {}\n\n"))}
+	}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{mk(), mk()}}
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled:                      true,
+		TargetLength:                 292,
+		TTLSeconds:                   3600,
+		HarvestProxyURL:              "socks5h://harvest.example:31",
+		HarvestAttemptTimeoutSeconds: 5,
+	}, upstream)
+	svc.settingService = settings
+	account := ticketTestAccount(41)
+
+	// 后台未设置 → 跟随 yaml 292：上游给的 312 是 miss，不落库。
+	require.Equal(t, 292, svc.openAICodexTicketConfig().TargetLength)
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+
+	// 后台改成 312 → 同样的上游响应立即被收下并注入。
+	repo.values[SettingKeyOpenAICodexTicketTargetLength] = "312"
+	settings.InvalidateOpenAICodexTicketTargetLengthCache()
+	require.Equal(t, 312, svc.openAICodexTicketConfig().TargetLength)
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	ticket := svc.lookupOpenAICodexTicket(account, "gpt-6-astra")
+	require.NotNil(t, ticket)
+	require.Equal(t, 312, ticket.Length)
+	h := http.Header{}
+	h.Set(openAICodexTurnStateHeader, "client-state")
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, state312, h.Get(openAICodexTurnStateHeader))
+
+	// 改回 292 → 已存的 312 票立即失效；默认 fail-open，保留客户端自带状态。
+	repo.values[SettingKeyOpenAICodexTicketTargetLength] = "292"
+	settings.InvalidateOpenAICodexTicketTargetLengthCache()
+	h = http.Header{}
+	h.Set(openAICodexTurnStateHeader, "client-state")
+	require.NoError(t, svc.applyOpenAICodexTicket(context.Background(), account, "gpt-6-astra", h))
+	require.Equal(t, "client-state", h.Get(openAICodexTurnStateHeader))
+
+	// 越界或非数字回退 yaml。
+	for _, bad := range []string{"10", "5000", "abc", "-1"} {
+		repo.values[SettingKeyOpenAICodexTicketTargetLength] = bad
+		settings.InvalidateOpenAICodexTicketTargetLengthCache()
+		require.Equal(t, 292, svc.openAICodexTicketConfig().TargetLength, bad)
+	}
+}
+
+func TestValidateOpenAICodexTicketTargetLength(t *testing.T) {
+	for _, ok := range []int{64, 292, 312, 4096} {
+		require.NoError(t, ValidateOpenAICodexTicketTargetLength(ok))
+	}
+	for _, bad := range []int{0, -1, 63, 4097} {
+		require.Error(t, ValidateOpenAICodexTicketTargetLength(bad))
+	}
 }

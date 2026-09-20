@@ -46,3 +46,62 @@ func TestSettingsCodexTicketRejectInvalidProxyWithoutLeakingPassword(t *testing.
 	require.NotContains(t, rec.Body.String(), "invalid-secret")
 	require.Equal(t, "http://previous.example.com:8080", repo.values[key])
 }
+
+func TestSettingsCodexTicketFailClosedWriteReadAndHotReload(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketFailClosed
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	// 未设置时跟随 yaml 回退值（默认 false）。
+	require.False(t, h.settingService.GetOpenAICodexTicketFailClosed(context.Background(), false))
+
+	rec := doUpdateSettings(t, h, map[string]any{key: true}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "true", repo.values[key])
+	require.True(t, h.settingService.GetOpenAICodexTicketFailClosed(context.Background(), false), "must take effect without restart")
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_fail_closed":true`)
+
+	// 省略该字段的保存不得把开关改回去。
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "true", repo.values[key])
+
+	rec = doUpdateSettings(t, h, map[string]any{key: false}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[key])
+	require.False(t, h.settingService.GetOpenAICodexTicketFailClosed(context.Background(), true))
+
+	get := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(get)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+	h.GetSettings(c)
+	require.Equal(t, http.StatusOK, get.Code)
+	require.Contains(t, get.Body.String(), `"openai_codex_ticket_fail_closed":false`)
+}
+
+func TestSettingsCodexTicketTargetLengthWriteReadValidate(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketTargetLength
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	require.Equal(t, 292, h.settingService.GetOpenAICodexTicketTargetLength(context.Background(), 292))
+
+	rec := doUpdateSettings(t, h, map[string]any{key: 312}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "312", repo.values[key])
+	require.Equal(t, 312, h.settingService.GetOpenAICodexTicketTargetLength(context.Background(), 292), "must take effect without restart")
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_target_length":312`)
+
+	// 越界值被拒绝，且不覆盖已保存的值。
+	rec = doUpdateSettings(t, h, map[string]any{key: 10}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "312", repo.values[key])
+
+	// 省略字段保持原值。
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "312", repo.values[key])
+
+	get := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(get)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+	h.GetSettings(c)
+	require.Equal(t, http.StatusOK, get.Code)
+	require.Contains(t, get.Body.String(), `"openai_codex_ticket_target_length":312`)
+}

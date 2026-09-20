@@ -897,6 +897,21 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else if s != nil && s.cfg != nil {
 		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
 	}
+	// 缺票拦截：后台键优先，缺失回退 yaml/env（默认 false，门票只是增强能力）。
+	if v, ok := settings[SettingKeyOpenAICodexTicketFailClosed]; ok && v != "" {
+		result.OpenAICodexTicketFailClosed = v == "true"
+	} else if s != nil && s.cfg != nil {
+		result.OpenAICodexTicketFailClosed = s.cfg.Gateway.OpenAICodexTicket.FailClosed
+	}
+	// 门票目标长度：后台键优先（须在允许区间内），缺失回退 yaml，再回退 292。
+	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketTargetLength])); err == nil && ValidateOpenAICodexTicketTargetLength(n) == nil {
+		result.OpenAICodexTicketTargetLength = n
+	} else if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.TargetLength > 0 {
+		result.OpenAICodexTicketTargetLength = s.cfg.Gateway.OpenAICodexTicket.TargetLength
+	}
+	if result.OpenAICodexTicketTargetLength <= 0 {
+		result.OpenAICodexTicketTargetLength = openAICodexTicketDefaultTargetLength
+	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]

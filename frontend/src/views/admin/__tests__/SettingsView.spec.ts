@@ -812,6 +812,36 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits the Codex ticket fail-closed toggle", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_fail_closed: false,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get("#codex-ticket-fail-closed");
+    await toggle.setValue(true);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_fail_closed).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("submits the Codex ticket target length as an integer", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_target_length: 292,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const input = wrapper.get("#codex-ticket-target-length");
+    await input.setValue("312");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_target_length).toBe(312);
+    wrapper.unmount();
+  });
+
   it("loads the masked Codex harvest proxy and submits a replacement URL", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

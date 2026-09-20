@@ -331,12 +331,16 @@ gateway:
   # 再在住宅 IP 业务请求中覆盖该头。默认关闭。
   # Env: GATEWAY_OPENAI_CODEX_TICKET_ENABLED=true
   #      GATEWAY_OPENAI_CODEX_TICKET_HARVEST_PROXY_URL=socks5h://user:pass@host:port
-  # Admin UI 开关（系统设置 → 网关 → Codex 设置 → 292 打票）可覆盖 enabled，无需重启。
+  # Admin UI（系统设置 → 网关 → Codex 设置）可热覆盖 enabled（292 打票）、fail_closed（缺票拦截）
+  # 与 target_length（门票目标长度），无需重启。
   # Off: do not harvest or inject. On: harvest in the background and inject on production requests.
   # The harvest proxy should rotate egress IPs itself (fresh CONNECT per request).
   # Credential shadow accounts retain their existing forwarding policy and are not ticket-gated.
   openai_codex_ticket:
     enabled: false
+    # Only tickets whose length equals target_length are stored and injected. The upstream
+    # mint format can drift (production once saw mostly 312); adjust in the Admin UI without a restart.
+    # 只接受并注入长度恰好等于该值的票；上游铸票格式会漂移（生产曾长期只见 312），可在后台热改。
     target_length: 292
     ttl_seconds: 3600
     refresh_before_seconds: 600
@@ -345,7 +349,13 @@ gateway:
     harvest_proxy_url: ""
     harvest_probe_interval_seconds: 6
     harvest_attempt_timeout_seconds: 25
-    fail_closed: true
+    # fail_closed (缺票拦截), default false: tickets are an enhancement. Without a valid
+    # ticket the request is forwarded unchanged and the upstream decides. Set true to
+    # pause ticketless accounts for the gated models instead (a harvest outage then
+    # becomes a gateway outage). Env: GATEWAY_OPENAI_CODEX_TICKET_FAIL_CLOSED=true
+    # 默认 false：无票不注入也不拦截，按原样转发；true 时无票账号对门控模型暂停调度，
+    # 打票故障会直接变成业务故障。后台开关可热覆盖此值。
+    fail_closed: false
     models:
       - gpt-6-astra
       - gpt-5.6-sol

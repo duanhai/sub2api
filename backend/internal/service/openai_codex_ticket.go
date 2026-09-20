@@ -28,10 +28,23 @@ const (
 	openAICodexTicketStatePrefix     = "gAAAAA"
 	openAICodexTicketDefaultModel    = "gpt-6-astra"
 	openAICodexTicketDefaultSolModel = "gpt-5.6-sol"
+	// openAICodexTicketDefaultTargetLength 是历史上被认定为「好票」的 turn-state 长度。
+	// 上游铸票格式可能变化（生产曾长期只返回 312），因此该值可在后台热改。
+	openAICodexTicketDefaultTargetLength = 292
+	openAICodexTicketMinTargetLength     = 64
+	openAICodexTicketMaxTargetLength     = 4096
 )
 
+// ValidateOpenAICodexTicketTargetLength 校验后台提交的门票目标长度。
+func ValidateOpenAICodexTicketTargetLength(n int) error {
+	if n < openAICodexTicketMinTargetLength || n > openAICodexTicketMaxTargetLength {
+		return fmt.Errorf("codex ticket target length must be between %d and %d", openAICodexTicketMinTargetLength, openAICodexTicketMaxTargetLength)
+	}
+	return nil
+}
+
 // ErrOpenAICodexTicketUnavailable 表示该号该模型没有可用的 292 门票，
-// 且 fail_closed 禁止裸打业务请求。
+// 且缺票拦截（fail_closed，默认关闭）禁止裸打业务请求。
 var ErrOpenAICodexTicketUnavailable = errors.New("codex turn-state ticket unavailable")
 
 type openAICodexTicket struct {
@@ -60,13 +73,18 @@ func extractOpenAICodexTicketModel(body []byte) string {
 	return normalizeOpenAICodexTicketModel(gjson.GetBytes(body, "model").String())
 }
 
+// openAICodexTicketConfig 返回生效的门票配置：yaml/env 为基线，target_length 会被
+// 后台热设置覆盖（enabled / fail_closed / harvest_proxy_url 有各自的读取函数）。
 func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicketConfig {
 	cfg := config.OpenAICodexTicketConfig{}
 	if s != nil && s.cfg != nil {
 		cfg = s.cfg.Gateway.OpenAICodexTicket
 	}
+	if s != nil && s.settingService != nil {
+		cfg.TargetLength = s.settingService.GetOpenAICodexTicketTargetLength(context.Background(), cfg.TargetLength)
+	}
 	if cfg.TargetLength <= 0 {
-		cfg.TargetLength = 292
+		cfg.TargetLength = openAICodexTicketDefaultTargetLength
 	}
 	if cfg.TTLSeconds <= 0 {
 		cfg.TTLSeconds = 3600
@@ -118,7 +136,7 @@ func OpenAICodexTicketStatuses(account *Account, cfg config.OpenAICodexTicketCon
 		models = []string{openAICodexTicketDefaultModel, openAICodexTicketDefaultSolModel}
 	}
 	if targetLen <= 0 {
-		targetLen = 292
+		targetLen = openAICodexTicketDefaultTargetLength
 	}
 	out := make([]OpenAICodexTicketStatus, 0, len(models))
 	for _, model := range models {
@@ -159,6 +177,24 @@ func (s *OpenAIGatewayService) openAICodexTicketEnabledContext(ctx context.Conte
 	fallback := s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.Enabled
 	if s.settingService != nil {
 		return s.settingService.GetOpenAICodexTicketEnabled(ctx, fallback)
+	}
+	return fallback
+}
+
+// openAICodexTicketFailClosed 返回缺票拦截开关。默认关闭：门票只是增强能力，
+// 无票时不注入、不拦截，由上游决定；开启后无票账号对门控模型暂停调度。
+// 后台设置优先（热更新、无需重启），缺失时回退 yaml/env。
+func (s *OpenAIGatewayService) openAICodexTicketFailClosed() bool {
+	return s.openAICodexTicketFailClosedContext(context.Background())
+}
+
+func (s *OpenAIGatewayService) openAICodexTicketFailClosedContext(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	fallback := s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.FailClosed
+	if s.settingService != nil {
+		return s.settingService.GetOpenAICodexTicketFailClosed(ctx, fallback)
 	}
 	return fallback
 }
@@ -206,10 +242,7 @@ func (s *OpenAIGatewayService) lookupOpenAICodexTicket(account *Account, model s
 		return nil
 	}
 	key := openAICodexTicketKey(account.ID, model)
-	targetLen := 292
-	if s != nil {
-		targetLen = s.openAICodexTicketConfig().TargetLength
-	}
+	targetLen := s.openAICodexTicketConfig().TargetLength
 	now := time.Now()
 	var mem *openAICodexTicket
 	if raw, ok := s.openaiCodexTickets.Load(key); ok {
@@ -287,8 +320,9 @@ func (s *OpenAIGatewayService) storeOpenAICodexTicket(ctx context.Context, accou
 }
 
 // applyOpenAICodexTicket 在出站请求上覆盖 x-codex-turn-state。
-// 请求路径只注入已捕获的有效门票，不现场打票；无票则返回
-// ErrOpenAICodexTicketUnavailable。打票由后台 harvester 完成。
+// 请求路径只注入已捕获的有效门票，不现场打票；打票由后台 harvester 完成。
+// 无票时：缺票拦截关闭（默认）→ 不碰请求头，保留客户端自带的 turn-state
+// 原样转发，由上游决定；缺票拦截开启 → 返回 ErrOpenAICodexTicketUnavailable。
 func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, account *Account, model string, h http.Header) error {
 	if s == nil || h == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabledContext(ctx) {
 		return nil
@@ -303,7 +337,7 @@ func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, accou
 		h.Set(openAICodexTurnStateHeader, ticket.State)
 		return nil
 	}
-	if !cfg.FailClosed {
+	if !s.openAICodexTicketFailClosedContext(ctx) {
 		return nil
 	}
 	return ErrOpenAICodexTicketUnavailable
@@ -341,14 +375,15 @@ func (s *OpenAIGatewayService) openAICodexTicketOutboundModel(account *Account, 
 
 // outboundModel 必须是真正会发给上游的模型名（openAICodexTicketOutboundModel），
 // 不是客户端原始模型：注入侧读的是出站 body.model，两侧口径必须一致。
+// 只有缺票拦截开启时才会把无票账号判为不可调度。
 func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, outboundModel string) bool {
 	if s == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabled() {
 		return false
 	}
-	cfg := s.openAICodexTicketConfig()
-	if !cfg.FailClosed {
+	if !s.openAICodexTicketFailClosed() {
 		return false
 	}
+	cfg := s.openAICodexTicketConfig()
 	model := normalizeOpenAICodexTicketModel(outboundModel)
 	if !s.openAICodexTicketGatedModel(model) {
 		return false

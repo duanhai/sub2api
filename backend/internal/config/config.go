@@ -1232,6 +1232,11 @@ func (c *UserMessageQueueConfig) GetEffectiveMode() string {
 // OpenAICodexTicketConfig 控制 ChatGPT OAuth 的 x-codex-turn-state 门票。
 // 打票走 harvest_proxy_url（SOCKS），业务出站仍用账号住宅 proxy_id，只替换该请求头。
 // 门票默认有效 3600 秒，临近过期前 refresh_before_seconds 重新打票。
+//
+// FailClosed（缺票拦截）默认关闭：门票是增强能力，无票时不注入、不拦截，按客户端
+// 原样转发，由上游决定是否接受。开启后无票账号对门控模型暂停调度。enabled、
+// fail_closed 与 target_length 都可被后台「系统设置 → 网关 → Codex 设置」热覆盖，
+// 此处仅为回退值。
 type OpenAICodexTicketConfig struct {
 	Enabled                      bool     `mapstructure:"enabled"`
 	TargetLength                 int      `mapstructure:"target_length"`
@@ -2414,7 +2419,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_proxy_url", "")
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_probe_interval_seconds", 6)
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
-	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", true)
+	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", false)
 	viper.SetDefault("gateway.openai_codex_ticket.models", []string{"gpt-6-astra", "gpt-5.6-sol"})
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
