@@ -921,6 +921,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if result.OpenAICodexTicketHarvestProbeIntervalSeconds <= 0 {
 		result.OpenAICodexTicketHarvestProbeIntervalSeconds = openAICodexTicketDefaultProbeIntervalSeconds
 	}
+	// 门票守护默认开启：缺失/空值一律视为开启。
+	if v, ok := settings[SettingKeyOpenAICodexTicketWatchdogEnabled]; ok && v != "" {
+		result.OpenAICodexTicketWatchdogEnabled = v == "true"
+	} else {
+		result.OpenAICodexTicketWatchdogEnabled = true
+	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]

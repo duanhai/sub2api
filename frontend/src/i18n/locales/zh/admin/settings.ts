@@ -573,6 +573,9 @@ export default {
         codexTicketFailClosed: '缺票拦截',
         codexTicketFailClosedDesc:
           '默认关闭：没有有效门票时不注入、不拦截，按客户端原样转发，由上游决定是否接受，打票故障不影响业务。开启后没有有效门票的账号会对门控模型暂停调度，打票代理故障将直接导致这些模型不可用。保存后立即生效，无需重启。',
+        codexTicketWatchdog: '门票守护',
+        codexTicketWatchdogDesc:
+          '开启后，业务请求注入了门票、但上游返回的模型与请求模型不符（如请求 gpt-6-astra 返回 gpt-5.6-luna），或响应头带回 312 长度的 turn-state，网关会立即作废这张票并触发一次重采，账号列表会显示触发次数与原因。不重放请求、不改已发出的响应。默认开启，保存后 5 秒内生效。',
         codexTicketTargetLength: '门票目标长度',
         codexTicketTargetLengthDesc:
           '只接受并注入长度恰好等于此值的 x-codex-turn-state，默认 292。上游铸票格式会漂移（探测日志里出现大量 http 200 但 len 为其他值即为信号），可在此调整，保存后 5 秒内生效、无需重启。改成当前常见长度意味着探测到的票几乎都会被注入，请先确认这类票对业务无副作用。允许范围 64 到 4096。',

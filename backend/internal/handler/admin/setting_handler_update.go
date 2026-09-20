@@ -261,6 +261,7 @@ type UpdateSettingsRequest struct {
 	OpenAICodexTicketFailClosed                  *bool   `json:"openai_codex_ticket_fail_closed"`
 	OpenAICodexTicketTargetLength                *int    `json:"openai_codex_ticket_target_length"`
 	OpenAICodexTicketHarvestProbeIntervalSeconds *int    `json:"openai_codex_ticket_harvest_probe_interval_seconds"`
+	OpenAICodexTicketWatchdogEnabled             *bool   `json:"openai_codex_ticket_watchdog_enabled"`
 	OpenAICodexTicketHarvestProxyURL             string  `json:"openai_codex_ticket_harvest_proxy_url"`
 
 	// codex_cli_only 加固（global-only）
@@ -1797,6 +1798,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketHarvestProbeIntervalSeconds
 		}(),
+		OpenAICodexTicketWatchdogEnabled: func() bool {
+			if req.OpenAICodexTicketWatchdogEnabled != nil {
+				return *req.OpenAICodexTicketWatchdogEnabled
+			}
+			return previousSettings.OpenAICodexTicketWatchdogEnabled
+		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2350,6 +2357,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
 		OpenAICodexTicketTargetLength:                          updatedSettings.OpenAICodexTicketTargetLength,
 		OpenAICodexTicketHarvestProbeIntervalSeconds:           updatedSettings.OpenAICodexTicketHarvestProbeIntervalSeconds,
+		OpenAICodexTicketWatchdogEnabled:                       updatedSettings.OpenAICodexTicketWatchdogEnabled,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,

@@ -4531,6 +4531,20 @@
                     v-model="form.openai_codex_ticket_fail_closed"
                   />
                 </div>
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                      {{ t("admin.settings.gatewayForwarding.codexTicketWatchdog") }}
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.codexTicketWatchdogDesc") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    id="codex-ticket-watchdog"
+                    v-model="form.openai_codex_ticket_watchdog_enabled"
+                  />
+                </div>
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexTicketTargetLength") }}
@@ -10052,6 +10066,7 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_fail_closed: false,
   openai_codex_ticket_target_length: 292,
   openai_codex_ticket_harvest_probe_interval_seconds: 6,
+  openai_codex_ticket_watchdog_enabled: true,
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   // codex_cli_only 加固
@@ -11666,6 +11681,7 @@ async function saveSettings() {
         Math.floor(Number(form.openai_codex_ticket_target_length)) || 292,
       openai_codex_ticket_harvest_probe_interval_seconds:
         Math.floor(Number(form.openai_codex_ticket_harvest_probe_interval_seconds)) || 6,
+      openai_codex_ticket_watchdog_enabled: form.openai_codex_ticket_watchdog_enabled,
       openai_codex_ticket_harvest_proxy_url:
         form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
       min_codex_version: form.min_codex_version?.trim() || "",

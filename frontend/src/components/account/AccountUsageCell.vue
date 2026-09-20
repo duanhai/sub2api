@@ -129,6 +129,13 @@
           <span v-else-if="ticket.blocked" class="text-amber-600 dark:text-amber-400">{{ t('admin.accounts.openai.codexTurnTicketPaused') }}</span>
           <span v-else class="text-gray-500">{{ t('admin.accounts.openai.codexTurnTicketMissing') }}</span>
         </div>
+        <div
+          v-if="codexTicketWatchdog"
+          class="text-[10px] leading-4 text-amber-600 dark:text-amber-400"
+          :title="codexTicketWatchdogTitle"
+        >
+          {{ t('admin.accounts.openai.codexTurnTicketWatchdog', { count: codexTicketWatchdog.trigger_count, reason: codexTicketWatchdogReason, time: codexTicketWatchdogTime }) }}
+        </div>
       </div>
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
         <UsageProgressBar
@@ -801,6 +808,32 @@ const hasOpenAIUsageFallback = computed(() => {
 })
 
 const codexTurnTickets = computed(() => props.account.codex_turn_tickets ?? [])
+
+const codexTicketWatchdog = computed(() => {
+  const w = props.account.codex_ticket_watchdog
+  return w && w.trigger_count > 0 ? w : null
+})
+
+const codexTicketWatchdogReason = computed(() => {
+  const reason = codexTicketWatchdog.value?.last_reason
+  if (reason === 'model_mismatch') return t('admin.accounts.openai.codexTurnTicketWatchdogModelMismatch')
+  if (reason === 'state_312') return t('admin.accounts.openai.codexTurnTicketWatchdogState312')
+  return reason ?? ''
+})
+
+const codexTicketWatchdogTime = computed(() => {
+  const at = codexTicketWatchdog.value?.last_triggered_at
+  if (!at) return ''
+  const d = new Date(at)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+})
+
+const codexTicketWatchdogTitle = computed(() => {
+  const w = codexTicketWatchdog.value
+  if (!w) return ''
+  return [w.last_model, w.last_response_model].filter(Boolean).join(' → ')
+})
 
 function shortCodexTicketModel(model: string) {
   if (model === 'gpt-6-astra') return 'astra'

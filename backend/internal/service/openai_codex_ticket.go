@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -380,23 +381,214 @@ func (s *OpenAIGatewayService) storeOpenAICodexTicket(ctx context.Context, accou
 // 无票时：缺票拦截关闭（默认）→ 不碰请求头，保留客户端自带的 turn-state
 // 原样转发，由上游决定；缺票拦截开启 → 返回 ErrOpenAICodexTicketUnavailable。
 func (s *OpenAIGatewayService) applyOpenAICodexTicket(ctx context.Context, account *Account, model string, h http.Header) error {
+	_, err := s.injectOpenAICodexTicket(ctx, account, model, h)
+	return err
+}
+
+// injectOpenAICodexTicket 是 applyOpenAICodexTicket 的实现，额外返回本次真正
+// 注入的门票（未注入返回 nil），供守护回执绑定。
+func (s *OpenAIGatewayService) injectOpenAICodexTicket(ctx context.Context, account *Account, model string, h http.Header) (*openAICodexTicket, error) {
 	if s == nil || h == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabledContext(ctx) {
-		return nil
+		return nil, nil
 	}
 	model = normalizeOpenAICodexTicketModel(model)
 	if model == "" || !s.openAICodexTicketGatedModel(model) {
-		return nil
+		return nil, nil
 	}
 	cfg := s.openAICodexTicketConfig()
 	ticket := s.lookupOpenAICodexTicket(account, model)
 	if ticket.valid(time.Now(), cfg.TargetLength) {
 		h.Set(openAICodexTurnStateHeader, ticket.State)
-		return nil
+		return ticket, nil
 	}
 	if !s.openAICodexTicketFailClosedContext(ctx) {
+		return nil, nil
+	}
+	return nil, ErrOpenAICodexTicketUnavailable
+}
+
+// ---- 门票守护（watchdog）----
+//
+// 上游对「坏票」不报错，只是悄悄把 gpt-6-astra 按 gpt-5.6-luna 服务，并在响应头
+// 带回 312 长度的 turn-state。守护在业务响应完成后读这两个信号：命中即作废本次
+// 注入的那张票并触发一次重采。它不重放业务请求、不改已发出的响应。
+
+const (
+	openAICodexTicketWatchdogExtraKey       = openAICodexTicketExtraKeyPrefix + "watchdog"
+	openAICodexTicketReceiptContextKey      = "openai_codex_ticket_receipt"
+	openAICodexTicketWatchdogReasonModel    = "model_mismatch"
+	openAICodexTicketWatchdogReasonState312 = "state_312"
+	openAICodexTicketDegradedStateLength    = 312
+)
+
+// OpenAICodexTicketWatchdogStatus 是账号级守护摘要，给管理端看；不含 state blob。
+type OpenAICodexTicketWatchdogStatus struct {
+	TriggerCount      int64      `json:"trigger_count"`
+	LastReason        string     `json:"last_reason,omitempty"`
+	LastModel         string     `json:"last_model,omitempty"`
+	LastResponseModel string     `json:"last_response_model,omitempty"`
+	LastTriggeredAt   *time.Time `json:"last_triggered_at,omitempty"`
+}
+
+// OpenAICodexTicketWatchdogStatusOf 从账号 Extra 读取守护摘要；从未触发返回 nil。
+func OpenAICodexTicketWatchdogStatusOf(account *Account) *OpenAICodexTicketWatchdogStatus {
+	if account == nil || account.Extra == nil {
 		return nil
 	}
-	return ErrOpenAICodexTicketUnavailable
+	raw, ok := account.Extra[openAICodexTicketWatchdogExtraKey]
+	if !ok || raw == nil {
+		return nil
+	}
+	b, err := json.Marshal(raw)
+	if err != nil {
+		return nil
+	}
+	var status OpenAICodexTicketWatchdogStatus
+	if err := json.Unmarshal(b, &status); err != nil || status.TriggerCount <= 0 {
+		return nil
+	}
+	return &status
+}
+
+// openAICodexTicketReceipt 记录「这次请求注入了哪张票」，绑定到注入那一刻的
+// 票身份（账号、模型、捕获时间）。一个迟到的响应不能作废之后新采的票。
+type openAICodexTicketReceipt struct {
+	accountID  int64
+	model      string
+	capturedAt time.Time
+}
+
+func (r *openAICodexTicketReceipt) matches(ticket *openAICodexTicket) bool {
+	return r != nil && ticket != nil && ticket.AccountID == r.accountID &&
+		normalizeOpenAICodexTicketModel(ticket.Model) == r.model && ticket.CapturedAt.Equal(r.capturedAt)
+}
+
+// applyOpenAICodexTicketForRequest 在 applyOpenAICodexTicket 之上把注入回执挂到
+// 下游请求上下文。failover 换号时每次尝试都会重新调用：注入则覆盖回执，未注入
+// 则清除，保证回执始终对应最后一次真正出站的请求。
+func (s *OpenAIGatewayService) applyOpenAICodexTicketForRequest(ctx context.Context, c *gin.Context, account *Account, model string, h http.Header) error {
+	ticket, err := s.injectOpenAICodexTicket(ctx, account, model, h)
+	if c != nil {
+		if err == nil && ticket != nil {
+			c.Set(openAICodexTicketReceiptContextKey, &openAICodexTicketReceipt{
+				accountID:  ticket.AccountID,
+				model:      normalizeOpenAICodexTicketModel(ticket.Model),
+				capturedAt: ticket.CapturedAt,
+			})
+		} else {
+			c.Set(openAICodexTicketReceiptContextKey, (*openAICodexTicketReceipt)(nil))
+		}
+	}
+	return err
+}
+
+func openAICodexTicketReceiptFromContext(c *gin.Context) *openAICodexTicketReceipt {
+	if c == nil {
+		return nil
+	}
+	raw, ok := c.Get(openAICodexTicketReceiptContextKey)
+	if !ok {
+		return nil
+	}
+	receipt, _ := raw.(*openAICodexTicketReceipt)
+	return receipt
+}
+
+func (s *OpenAIGatewayService) openAICodexTicketWatchdogEnabledContext(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if s.settingService != nil {
+		return s.settingService.GetOpenAICodexTicketWatchdogEnabled(ctx, true)
+	}
+	return true
+}
+
+// openAICodexTicketWatchdogReason 判定一次成功响应是否暴露了「坏票」信号。
+func openAICodexTicketWatchdogReason(result *OpenAIForwardResult, observedModel string) (reason, responseModel string) {
+	if result == nil {
+		return "", ""
+	}
+	responseModel = strings.TrimSpace(result.UpstreamResponseModel)
+	if responseModel == "" {
+		responseModel = strings.TrimSpace(observedModel)
+	}
+	sent := upstreamSentModel(result.Model, result.UpstreamModel)
+	if mismatch := upstreamModelMismatch(sent, responseModel); mismatch != nil && *mismatch && sent != "" {
+		return openAICodexTicketWatchdogReasonModel, responseModel
+	}
+	if result.ResponseHeaders != nil {
+		state := strings.TrimSpace(result.ResponseHeaders.Get(openAICodexTurnStateHeader))
+		if len(state) == openAICodexTicketDegradedStateLength && strings.HasPrefix(state, openAICodexTicketStatePrefix) {
+			return openAICodexTicketWatchdogReasonState312, responseModel
+		}
+	}
+	return "", responseModel
+}
+
+// ObserveOpenAICodexTicketOutcome 在一次业务请求拿到上游结果后调用。只有本次
+// 真正注入过门票（有回执）且该票仍是当前票时才会动作；命中坏票信号则作废该票、
+// 落库守护摘要，并异步触发一次重采（受 429 退避约束）。
+func (s *OpenAIGatewayService) ObserveOpenAICodexTicketOutcome(c *gin.Context, account *Account, result *OpenAIForwardResult) {
+	if s == nil || c == nil || account == nil || result == nil {
+		return
+	}
+	receipt := openAICodexTicketReceiptFromContext(c)
+	if receipt == nil || receipt.accountID != account.ID {
+		return
+	}
+	// 回执只用一次：同一请求后续（例如 failover 部分结果）不重复判定。
+	c.Set(openAICodexTicketReceiptContextKey, (*openAICodexTicketReceipt)(nil))
+	ctx := context.Background()
+	if c.Request != nil {
+		ctx = c.Request.Context()
+	}
+	if !s.openAICodexTicketEnabledContext(ctx) || !s.openAICodexTicketWatchdogEnabledContext(ctx) {
+		return
+	}
+	reason, responseModel := openAICodexTicketWatchdogReason(result, observedUpstreamResponseModel(c))
+	if reason == "" {
+		return
+	}
+	current := s.lookupOpenAICodexTicket(account, receipt.model)
+	if !receipt.matches(current) {
+		return
+	}
+	now := time.Now()
+	key := openAICodexTicketKey(account.ID, receipt.model)
+	s.openaiCodexTickets.Delete(key)
+	status := OpenAICodexTicketWatchdogStatusOf(account)
+	if status == nil {
+		status = &OpenAICodexTicketWatchdogStatus{}
+	}
+	status.TriggerCount++
+	status.LastReason = reason
+	status.LastModel = receipt.model
+	status.LastResponseModel = responseModel
+	status.LastTriggeredAt = &now
+	if account.Extra != nil {
+		delete(account.Extra, openAICodexTicketExtraKey(receipt.model))
+		account.Extra[openAICodexTicketWatchdogExtraKey] = status
+	}
+	logger.L().Warn("openai_codex_ticket watchdog invalidated ticket",
+		zap.Int64("account_id", account.ID), zap.String("model", receipt.model),
+		zap.String("reason", reason), zap.String("response_model", responseModel),
+		zap.Int64("trigger_count", status.TriggerCount))
+	if s.accountRepo != nil {
+		persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		if err := s.accountRepo.UpdateExtra(persistCtx, account.ID, map[string]any{
+			openAICodexTicketExtraKey(receipt.model): nil,
+			openAICodexTicketWatchdogExtraKey:        status,
+		}); err != nil {
+			logger.L().Warn("openai_codex_ticket watchdog persist failed", zap.Int64("account_id", account.ID), zap.Error(err))
+		}
+	}
+	// 立即补一发探测；singleflight 去重，429 退避窗口内 probeOnce 自己会跳过。
+	acc := *account
+	acc.Extra = maps.Clone(account.Extra)
+	acc.Credentials = maps.Clone(account.Credentials)
+	go s.probeOnceOpenAICodexTicket(context.Background(), &acc, receipt.model)
 }
 
 // openAICodexTicketOutboundModel 预测本请求真正出站的模型名，也就是
@@ -635,6 +827,9 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 	cfg := s.openAICodexTicketConfig()
 	proxyURL := s.openAICodexTicketHarvestProxyURLContext(ctx)
 	if proxyURL == "" || s.httpUpstream == nil || ctx.Err() != nil {
+		return
+	}
+	if b := s.openAICodexTicketBackoffFor(account.ID); time.Now().Before(b.until) {
 		return
 	}
 	key := openAICodexTicketKey(account.ID, model)

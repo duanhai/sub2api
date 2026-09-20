@@ -254,6 +254,7 @@ type SystemSettings struct {
 	OpenAICodexTicketFailClosed                  bool   // Codex 292 缺票拦截；关闭（默认）无票放行，开启无票账号暂停调度
 	OpenAICodexTicketTargetLength                int    // Codex 门票目标长度；只接受并注入恰好等于该长度的票（默认 292）
 	OpenAICodexTicketHarvestProbeIntervalSeconds int    // Codex 打票探测周期（秒，默认 6）；过密会叠出上游 429
+	OpenAICodexTicketWatchdogEnabled             bool   // Codex 门票守护：响应模型不符/312 回执即作废门票并重采（默认开）
 	OpenAICodexTicketHarvestProxyURL             string // Codex 292 打票代理 URL；空则回退 yaml/env
 	MinCodexVersion                              string // codex_cli_only 最低 Codex 引擎版本；空=不检查
 	MaxCodexVersion                              string // codex_cli_only 最高 Codex 引擎版本；空=不检查

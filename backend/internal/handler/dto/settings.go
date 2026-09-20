@@ -221,6 +221,7 @@ type SystemSettings struct {
 	OpenAICodexTicketFailClosed                  bool   `json:"openai_codex_ticket_fail_closed"`
 	OpenAICodexTicketTargetLength                int    `json:"openai_codex_ticket_target_length"`
 	OpenAICodexTicketHarvestProbeIntervalSeconds int    `json:"openai_codex_ticket_harvest_probe_interval_seconds"`
+	OpenAICodexTicketWatchdogEnabled             bool   `json:"openai_codex_ticket_watchdog_enabled"`
 	OpenAICodexTicketHarvestProxyURL             string `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketHarvestProxyConfigured      bool   `json:"openai_codex_ticket_harvest_proxy_configured"`
 

@@ -723,6 +723,10 @@ const (
 	// SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds 打票探测周期（秒，后台可改、热更新）。
 	// 缺失/非法回退 yaml（默认 6）。探测本身会叠加到账号请求频率上，过密会招来上游 429。
 	SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds = "openai_codex_ticket_harvest_probe_interval_seconds"
+	// SettingKeyOpenAICodexTicketWatchdogEnabled 门票守护开关（后台可改、热更新，默认开）。
+	// 开：业务响应里上游返回模型与请求模型不符、或响应头带回 312 长度 turn-state 时，
+	// 立即作废本次注入的门票并触发一次重采。关：只记账，不动门票。
+	SettingKeyOpenAICodexTicketWatchdogEnabled = "openai_codex_ticket_watchdog_enabled"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

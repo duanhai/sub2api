@@ -122,3 +122,22 @@ func TestSettingsCodexTicketProbeIntervalWriteReadValidate(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, "30", repo.values[key])
 }
+
+func TestSettingsCodexTicketWatchdogDefaultsOnAndHotReloads(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketWatchdogEnabled
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	require.True(t, h.settingService.GetOpenAICodexTicketWatchdogEnabled(context.Background(), true))
+	get := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(get)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+	h.GetSettings(c)
+	require.Contains(t, get.Body.String(), `"openai_codex_ticket_watchdog_enabled":true`)
+
+	rec := doUpdateSettings(t, h, map[string]any{key: false}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[key])
+	require.False(t, h.settingService.GetOpenAICodexTicketWatchdogEnabled(context.Background(), true))
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[key])
+}

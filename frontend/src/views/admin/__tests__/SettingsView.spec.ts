@@ -827,6 +827,21 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits the Codex ticket watchdog toggle", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_watchdog_enabled: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get("#codex-ticket-watchdog");
+    await toggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_watchdog_enabled).toBe(false);
+    wrapper.unmount();
+  });
+
   it("submits the Codex ticket target length as an integer", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

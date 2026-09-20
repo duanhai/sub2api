@@ -420,6 +420,25 @@ func (s *SettingService) InvalidateOpenAICodexTicketHarvestProbeIntervalCache() 
 	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketProbeIntervalCache, &s.openAICodexTicketProbeIntervalSF, SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds)
 }
 
+// GetOpenAICodexTicketWatchdogEnabled 返回门票守护开关；缺失回退 fallback（默认 true）。
+func (s *SettingService) GetOpenAICodexTicketWatchdogEnabled(ctx context.Context, fallback bool) bool {
+	if s == nil {
+		return fallback
+	}
+	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketWatchdogCache, &s.openAICodexTicketWatchdogSF, SettingKeyOpenAICodexTicketWatchdogEnabled)
+	if !ok || raw == "" {
+		return fallback
+	}
+	return raw == "true"
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketWatchdogCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketWatchdogCache, &s.openAICodexTicketWatchdogSF, SettingKeyOpenAICodexTicketWatchdogEnabled)
+}
+
 type cachedOpenAICodexTicketHarvestProxy struct {
 	value     string
 	expiresAt int64

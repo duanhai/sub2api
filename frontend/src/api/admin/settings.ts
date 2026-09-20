@@ -643,6 +643,7 @@ export interface SystemSettings {
   openai_codex_ticket_fail_closed: boolean;
   openai_codex_ticket_target_length: number;
   openai_codex_ticket_harvest_probe_interval_seconds: number;
+  openai_codex_ticket_watchdog_enabled: boolean;
   openai_codex_ticket_harvest_proxy_url: string;
   openai_codex_ticket_harvest_proxy_configured: boolean;
   // codex_cli_only 加固
@@ -968,6 +969,7 @@ export interface UpdateSettingsRequest {
   openai_codex_ticket_fail_closed?: boolean;
   openai_codex_ticket_target_length?: number;
   openai_codex_ticket_harvest_probe_interval_seconds?: number;
+  openai_codex_ticket_watchdog_enabled?: boolean;
   openai_codex_ticket_harvest_proxy_url?: string;
   // codex_cli_only 加固
   min_codex_version?: string;

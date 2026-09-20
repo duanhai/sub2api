@@ -494,6 +494,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexTicketHarvestProbeIntervalSeconds != after.OpenAICodexTicketHarvestProbeIntervalSeconds {
 		changed = append(changed, "openai_codex_ticket_harvest_probe_interval_seconds")
 	}
+	if before.OpenAICodexTicketWatchdogEnabled != after.OpenAICodexTicketWatchdogEnabled {
+		changed = append(changed, "openai_codex_ticket_watchdog_enabled")
+	}
 	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
 		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
 	}

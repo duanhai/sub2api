@@ -580,6 +580,9 @@ export default {
         codexTicketFailClosed: "Block requests without a ticket",
         codexTicketFailClosedDesc:
           "Off by default: without a valid ticket the gateway forwards the request unchanged and lets the upstream decide, so a harvest outage never blocks traffic. When on, accounts without a valid ticket are paused for the gated models, and a harvest proxy outage takes those models down. Applies immediately without a restart.",
+        codexTicketWatchdog: "Ticket watchdog",
+        codexTicketWatchdogDesc:
+          "When on, if a request that carried an injected ticket comes back served by a different model (for example gpt-6-astra answered as gpt-5.6-luna) or with a 312-length turn-state in the response, the gateway invalidates that ticket immediately and triggers a re-harvest. The account list shows trigger count and reason. Requests are never replayed and responses are never altered. On by default, applies within seconds.",
         codexTicketTargetLength: "Ticket target length",
         codexTicketTargetLengthDesc:
           "Only x-codex-turn-state values of exactly this length are stored and injected (default 292). The upstream mint format drifts; many probe misses with HTTP 200 and a different len are the signal. Changes apply within seconds without a restart. Setting it to the currently common length means nearly every probed ticket gets injected, so confirm such tickets are harmless first. Allowed range 64 to 4096.",

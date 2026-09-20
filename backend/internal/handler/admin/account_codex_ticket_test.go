@@ -78,3 +78,20 @@ func TestAccountResponseCodexTicketsFollowLiveTargetLength(t *testing.T) {
 	require.True(t, h.accountListResponseFromService(account).CodexTurnTickets[0].Ready)
 	require.Equal(t, 292, cfg.Gateway.OpenAICodexTicket.TargetLength, "shared startup config must stay untouched")
 }
+
+// 守护摘要只在门票功能开启、账号有门票行时随账号返回。
+func TestAccountResponseIncludesCodexTicketWatchdogSummary(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAICodexTicket = config.OpenAICodexTicketConfig{Enabled: true, Models: []string{"gpt-6-astra"}}
+	h := &AccountHandler{cfg: cfg}
+	account := &service.Account{ID: 41, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Extra: map[string]any{
+		"codex_turn_ticket:watchdog": map[string]any{"trigger_count": 2, "last_reason": "model_mismatch", "last_model": "gpt-6-astra", "last_response_model": "gpt-5.6-luna"},
+	}}
+	out := h.accountResponseFromService(account)
+	require.NotNil(t, out.CodexTicketWatchdog)
+	require.Equal(t, int64(2), out.CodexTicketWatchdog.TriggerCount)
+	require.Equal(t, "gpt-5.6-luna", out.CodexTicketWatchdog.LastResponseModel)
+	require.NotNil(t, h.accountListResponseFromService(account).CodexTicketWatchdog)
+	cfg.Gateway.OpenAICodexTicket.Enabled = false
+	require.Nil(t, h.accountResponseFromService(account).CodexTicketWatchdog)
+}

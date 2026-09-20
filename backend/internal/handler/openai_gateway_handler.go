@@ -795,6 +795,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if res == nil {
 				return
 			}
+			// 门票守护：上游返回模型不符或带回 312 回执 → 作废本次注入的票并重采。
+			h.gatewayService.ObserveOpenAICodexTicketOutcome(c, account, res)
 			stampOpenAIRequestedReasoningEffort(res, c)
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
@@ -1377,6 +1379,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			if res == nil {
 				return
 			}
+			h.gatewayService.ObserveOpenAICodexTicketOutcome(c, account, res)
 			stampOpenAIRequestedReasoningEffort(res, c)
 			userAgent := c.GetHeader("User-Agent")
 			clientIP := ip.GetClientIP(c)
@@ -2987,6 +2990,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 					h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(ctx, account.ID, result.ResponseHeaders)
 				}
+				h.gatewayService.ObserveOpenAICodexTicketOutcome(c, account, result)
 				scheduleModel := turnUpstreamModel
 				if scheduleModel == "" {
 					scheduleModel = turnRequestedModel

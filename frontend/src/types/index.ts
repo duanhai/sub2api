@@ -1179,6 +1179,13 @@ export interface Account {
     blocked: boolean
     expires_at?: string
   }>
+  codex_ticket_watchdog?: {
+    trigger_count: number
+    last_reason?: string
+    last_model?: string
+    last_response_model?: string
+    last_triggered_at?: string
+  }
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
     model_rate_limits?: Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>

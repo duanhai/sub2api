@@ -141,6 +141,34 @@ describe('AccountUsageCell', () => {
     wrapper.unmount()
   })
 
+  it('renders the Codex ticket watchdog summary when it has fired', async () => {
+    getUsage.mockResolvedValue({})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9703,
+          platform: 'openai',
+          type: 'oauth',
+          codex_turn_tickets: [{ model: 'gpt-6-astra', ready: false, remaining_seconds: 0, blocked: false }],
+          codex_ticket_watchdog: {
+            trigger_count: 3,
+            last_reason: 'model_mismatch',
+            last_model: 'gpt-6-astra',
+            last_response_model: 'gpt-5.6-luna',
+            last_triggered_at: '2026-09-20T17:16:57+08:00',
+          },
+        }),
+      },
+      global: { stubs: { OpenAIQuotaResetCell: true, UsageProgressBar: true, AccountQuotaInfo: true } },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('admin.accounts.openai.codexTurnTicketWatchdog')
+    expect(wrapper.html()).toContain('gpt-6-astra → gpt-5.6-luna')
+    await wrapper.setProps({ account: { ...wrapper.props('account'), codex_ticket_watchdog: { trigger_count: 0 } } })
+    expect(wrapper.text()).not.toContain('codexTurnTicketWatchdog')
+    wrapper.unmount()
+  })
+
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {
