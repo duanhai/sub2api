@@ -31,7 +31,7 @@ func (r *codexTicketSettingRepo) SetMultiple(_ context.Context, settings map[str
 		return r.err
 	}
 	for k, v := range settings {
-		r.codexPolicyMigrationRepoStub.values[k] = v
+		r.values[k] = v
 	}
 	return nil
 }
