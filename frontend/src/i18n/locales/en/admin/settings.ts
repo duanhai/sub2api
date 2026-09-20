@@ -583,6 +583,13 @@ export default {
         codexTicketWatchdog: "Ticket watchdog",
         codexTicketWatchdogDesc:
           "When on, if a request that carried an injected ticket comes back served by a different model (for example gpt-6-astra answered as gpt-5.6-luna) or with a 312-length turn-state in the response, the gateway invalidates that ticket immediately and triggers a re-harvest. The account list shows trigger count and reason. Requests are never replayed and responses are never altered. On by default, applies within seconds.",
+        codexTicketFallback: "Fallback model without a ticket",
+        codexTicketFallbackDesc:
+          "When a gated model has no valid ticket, the gateway rewrites the outbound model to the mapped fallback below (default gpt-6-astra → gpt-5.6-sol) instead of letting the upstream silently serve gpt-5.6-luna. One level only, reasoning effort is inherited, billing follows the model actually sent. Not applied while fail-closed is on. On by default, applies within seconds.",
+        codexTicketFallbackModels: "Fallback mapping",
+        codexTicketFallbackModelsDesc:
+          "One from=to per line. Leave blank to use the yaml default (gpt-6-astra=gpt-5.6-sol). A fallback model is never mapped again.",
+        codexTicketFallbackModelsPlaceholder: "gpt-6-astra=gpt-5.6-sol",
         codexTicketTargetLength: "Ticket target length",
         codexTicketTargetLengthDesc:
           "Only x-codex-turn-state values of exactly this length are stored and injected (default 292). The upstream mint format drifts; many probe misses with HTTP 200 and a different len are the signal. Changes apply within seconds without a restart. Setting it to the currently common length means nearly every probed ticket gets injected, so confirm such tickets are harmless first. Allowed range 64 to 4096.",

@@ -842,6 +842,24 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits the Codex ticket fallback toggle and mapping", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_fallback_enabled: true,
+      openai_codex_ticket_fallback_models: "",
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get("#codex-ticket-fallback").setValue(false);
+    await wrapper.get("#codex-ticket-fallback-models").setValue(" gpt-6-astra=gpt-5.6-sol \n");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload.openai_codex_ticket_fallback_enabled).toBe(false);
+    expect(payload.openai_codex_ticket_fallback_models).toBe("gpt-6-astra=gpt-5.6-sol");
+    wrapper.unmount();
+  });
+
   it("submits the Codex ticket target length as an integer", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

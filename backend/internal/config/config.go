@@ -1247,6 +1247,10 @@ type OpenAICodexTicketConfig struct {
 	HarvestAttemptTimeoutSeconds int      `mapstructure:"harvest_attempt_timeout_seconds"`
 	FailClosed                   bool     `mapstructure:"fail_closed"`
 	Models                       []string `mapstructure:"models"`
+	// FallbackModels: 无有效门票且未开缺票拦截时，出站前把门控模型改写为兜底模型
+	// （默认 gpt-6-astra → gpt-5.6-sol），由网关选降级目标，而不是让上游悄悄降成 luna。
+	// 只做一级映射；兜底模型自身不再映射。后台可热覆盖。
+	FallbackModels map[string]string `mapstructure:"fallback_models"`
 }
 
 // DefaultOpenAIWSClientFirstMessageTimeoutSeconds preserves the legacy ingress deadline.
@@ -2421,6 +2425,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_codex_ticket.harvest_attempt_timeout_seconds", 25)
 	viper.SetDefault("gateway.openai_codex_ticket.fail_closed", false)
 	viper.SetDefault("gateway.openai_codex_ticket.models", []string{"gpt-6-astra", "gpt-5.6-sol"})
+	viper.SetDefault("gateway.openai_codex_ticket.fallback_models", map[string]string{"gpt-6-astra": "gpt-5.6-sol"})
 	viper.SetDefault("gateway.live.max_session_duration_seconds", 3600)
 	// OpenAI Responses WebSocket（默认开启；可通过 force_http 紧急回滚）
 	viper.SetDefault("gateway.openai_ws.enabled", true)

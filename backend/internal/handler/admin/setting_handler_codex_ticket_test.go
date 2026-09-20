@@ -141,3 +141,18 @@ func TestSettingsCodexTicketWatchdogDefaultsOnAndHotReloads(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, "false", repo.values[key])
 }
+
+func TestSettingsCodexTicketFallbackWriteReadValidate(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	rec := doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_fallback_enabled": false, "openai_codex_ticket_fallback_models": "gpt-6-astra=gpt-5.6-terra"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketFallbackEnabled])
+	require.Equal(t, "gpt-6-astra=gpt-5.6-terra", repo.values[service.SettingKeyOpenAICodexTicketFallbackModels])
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_fallback_models":"gpt-6-astra=gpt-5.6-terra"`)
+	rec = doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_fallback_models": "not-a-mapping"}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "gpt-6-astra=gpt-5.6-terra", repo.values[service.SettingKeyOpenAICodexTicketFallbackModels])
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketFallbackEnabled])
+}

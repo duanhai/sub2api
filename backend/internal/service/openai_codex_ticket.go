@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -405,6 +406,149 @@ func (s *OpenAIGatewayService) injectOpenAICodexTicket(ctx context.Context, acco
 		return nil, nil
 	}
 	return nil, ErrOpenAICodexTicketUnavailable
+}
+
+// ---- 无票兜底降级 ----
+//
+// 没票时与其让上游把 gpt-6-astra 悄悄降成 gpt-5.6-luna，不如网关自己把出站模型
+// 改成 gpt-5.6-sol：sol 在生产上从未被降级。只做一级映射，兜底模型自身不再映射；
+// reasoning.effort 原样继承；缺票拦截开着时不兜底（严格模式按拦截处理）。
+
+const openAICodexTicketFallbackContextKey = "openai_codex_ticket_fallback"
+
+// ParseOpenAICodexTicketFallbackModels 解析 "from=to" 映射，多条以换行/逗号/分号分隔。
+func ParseOpenAICodexTicketFallbackModels(raw string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, item := range strings.FieldsFunc(raw, func(r rune) bool { return r == '\n' || r == ',' || r == ';' }) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		from, to, ok := strings.Cut(item, "=")
+		if !ok {
+			from, to, ok = strings.Cut(item, "→")
+		}
+		from, to = normalizeOpenAICodexTicketModel(from), normalizeOpenAICodexTicketModel(to)
+		if !ok || from == "" || to == "" {
+			return nil, fmt.Errorf("fallback mapping %q must look like from=to", item)
+		}
+		if from == to {
+			return nil, fmt.Errorf("fallback mapping %q maps a model to itself", item)
+		}
+		out[from] = to
+	}
+	return out, nil
+}
+
+// ValidateOpenAICodexTicketFallbackModels 校验后台提交的映射原文（空串合法：回退 yaml）。
+func ValidateOpenAICodexTicketFallbackModels(raw string) error {
+	_, err := ParseOpenAICodexTicketFallbackModels(raw)
+	return err
+}
+
+// FormatOpenAICodexTicketFallbackModels 把 yaml 映射表格式化为后台原文（稳定顺序）。
+func FormatOpenAICodexTicketFallbackModels(m map[string]string) string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		if strings.TrimSpace(k) != "" && strings.TrimSpace(m[k]) != "" {
+			keys = append(keys, k)
+		}
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, strings.TrimSpace(k)+"="+strings.TrimSpace(m[k]))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (s *OpenAIGatewayService) openAICodexTicketFallbackEnabledContext(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if s.settingService != nil {
+		return s.settingService.GetOpenAICodexTicketFallbackEnabled(ctx, true)
+	}
+	return true
+}
+
+// openAICodexTicketFallbackModels 返回生效的兜底映射：后台原文优先（解析失败视为空），
+// 空则回退 yaml。
+func (s *OpenAIGatewayService) openAICodexTicketFallbackModels(ctx context.Context) map[string]string {
+	if s == nil {
+		return nil
+	}
+	if s.settingService != nil {
+		if raw := strings.TrimSpace(s.settingService.GetOpenAICodexTicketFallbackModels(ctx)); raw != "" {
+			if m, err := ParseOpenAICodexTicketFallbackModels(raw); err == nil {
+				return m
+			}
+		}
+	}
+	if s.cfg != nil {
+		m := make(map[string]string, len(s.cfg.Gateway.OpenAICodexTicket.FallbackModels))
+		for k, v := range s.cfg.Gateway.OpenAICodexTicket.FallbackModels {
+			if k, v = normalizeOpenAICodexTicketModel(k), normalizeOpenAICodexTicketModel(v); k != "" && v != "" && k != v {
+				m[k] = v
+			}
+		}
+		return m
+	}
+	return nil
+}
+
+// openAICodexTicketFallbackModel 判定本次出站是否应改写为兜底模型。
+// 条件：门票功能开、兜底开、缺票拦截关、outboundModel 是门控模型、该账号该模型
+// 当前没有有效门票、映射表里有它。返回 (兜底模型, true)；否则 ("", false)。
+func (s *OpenAIGatewayService) openAICodexTicketFallbackModel(ctx context.Context, account *Account, outboundModel string) (string, bool) {
+	if s == nil || !isOpenAICodexTicketAccount(account) || !s.openAICodexTicketEnabledContext(ctx) {
+		return "", false
+	}
+	model := normalizeOpenAICodexTicketModel(outboundModel)
+	if model == "" || !s.openAICodexTicketGatedModel(model) {
+		return "", false
+	}
+	if !s.openAICodexTicketFallbackEnabledContext(ctx) || s.openAICodexTicketFailClosedContext(ctx) {
+		return "", false
+	}
+	target, ok := s.openAICodexTicketFallbackModels(ctx)[model]
+	if !ok || target == "" || target == model {
+		return "", false
+	}
+	if s.lookupOpenAICodexTicket(account, model).valid(time.Now(), s.openAICodexTicketConfig().TargetLength) {
+		return "", false
+	}
+	return target, true
+}
+
+// applyOpenAICodexTicketFallback 是各出站路径的统一入口：需要兜底时返回改写后的
+// 模型、在请求上下文打标、记日志；不需要时原样返回。
+func (s *OpenAIGatewayService) applyOpenAICodexTicketFallback(ctx context.Context, c *gin.Context, account *Account, outboundModel string) (string, bool) {
+	target, ok := s.openAICodexTicketFallbackModel(ctx, account, outboundModel)
+	if !ok {
+		return outboundModel, false
+	}
+	if c != nil {
+		c.Set(openAICodexTicketFallbackContextKey, normalizeOpenAICodexTicketModel(outboundModel)+"→"+target)
+	}
+	logger.L().Info("openai_codex_ticket fallback model applied",
+		zap.Int64("account_id", account.ID),
+		zap.String("from", normalizeOpenAICodexTicketModel(outboundModel)),
+		zap.String("to", target))
+	return target, true
+}
+
+// OpenAICodexTicketFallbackFromContext 返回本请求的兜底标记（"from→to"），未兜底为空。
+func OpenAICodexTicketFallbackFromContext(c *gin.Context) string {
+	if c == nil {
+		return ""
+	}
+	if v, ok := c.Get(openAICodexTicketFallbackContextKey); ok {
+		if str, ok := v.(string); ok {
+			return str
+		}
+	}
+	return ""
 }
 
 // ---- 门票守护（watchdog）----

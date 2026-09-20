@@ -314,6 +314,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 		OpenAICodexTicketTargetLength:                          settings.OpenAICodexTicketTargetLength,
 		OpenAICodexTicketHarvestProbeIntervalSeconds:           settings.OpenAICodexTicketHarvestProbeIntervalSeconds,
 		OpenAICodexTicketWatchdogEnabled:                       settings.OpenAICodexTicketWatchdogEnabled,
+		OpenAICodexTicketFallbackEnabled:                       settings.OpenAICodexTicketFallbackEnabled,
+		OpenAICodexTicketFallbackModels:                        settings.OpenAICodexTicketFallbackModels,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(settings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL) != "",
 		MinCodexVersion:                                        settings.MinCodexVersion,

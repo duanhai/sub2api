@@ -439,6 +439,44 @@ func (s *SettingService) InvalidateOpenAICodexTicketWatchdogCache() {
 	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketWatchdogCache, &s.openAICodexTicketWatchdogSF, SettingKeyOpenAICodexTicketWatchdogEnabled)
 }
 
+// GetOpenAICodexTicketFallbackEnabled 返回无票兜底降级开关；缺失回退 fallback（默认 true）。
+func (s *SettingService) GetOpenAICodexTicketFallbackEnabled(ctx context.Context, fallback bool) bool {
+	if s == nil {
+		return fallback
+	}
+	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketFallbackCache, &s.openAICodexTicketFallbackSF, SettingKeyOpenAICodexTicketFallbackEnabled)
+	if !ok || raw == "" {
+		return fallback
+	}
+	return raw == "true"
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketFallbackCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketFallbackCache, &s.openAICodexTicketFallbackSF, SettingKeyOpenAICodexTicketFallbackEnabled)
+}
+
+// GetOpenAICodexTicketFallbackModels 返回后台配置的兜底映射原文；空表示回退 yaml。
+func (s *SettingService) GetOpenAICodexTicketFallbackModels(ctx context.Context) string {
+	if s == nil {
+		return ""
+	}
+	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketFallbackMapCache, &s.openAICodexTicketFallbackMapSF, SettingKeyOpenAICodexTicketFallbackModels)
+	if !ok {
+		return ""
+	}
+	return raw
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketFallbackModelsCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketFallbackMapCache, &s.openAICodexTicketFallbackMapSF, SettingKeyOpenAICodexTicketFallbackModels)
+}
+
 type cachedOpenAICodexTicketHarvestProxy struct {
 	value     string
 	expiresAt int64

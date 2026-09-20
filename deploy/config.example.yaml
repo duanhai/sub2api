@@ -363,6 +363,13 @@ gateway:
     models:
       - gpt-6-astra
       - gpt-5.6-sol
+    # Without a valid ticket (and fail_closed off) the gateway rewrites the outbound model to the
+    # fallback below instead of letting the upstream silently serve gpt-5.6-luna. One level only;
+    # the fallback model is never mapped again. reasoning.effort is inherited. Admin UI can override.
+    # 无票且未开缺票拦截时，出站前把门控模型改写为兜底模型（默认 astra → sol），由网关选降级目标，
+    # 而不是让上游悄悄降成 luna。只做一级；推理强度原样继承。后台可热改。
+    fallback_models:
+      gpt-6-astra: gpt-5.6-sol
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600

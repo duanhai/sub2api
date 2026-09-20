@@ -384,6 +384,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamModel = compactModel
 		}
 	}
+	// 无票兜底：门控模型没票时改写为兜底模型（默认 astra → sol），计费也按实际出站模型。
+	if fallbackModel, applied := s.applyOpenAICodexTicketFallback(ctx, c, account, upstreamModel); applied {
+		upstreamModel = fallbackModel
+		billingModel = fallbackModel
+	}
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
 	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses {

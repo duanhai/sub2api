@@ -497,6 +497,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexTicketWatchdogEnabled != after.OpenAICodexTicketWatchdogEnabled {
 		changed = append(changed, "openai_codex_ticket_watchdog_enabled")
 	}
+	if before.OpenAICodexTicketFallbackEnabled != after.OpenAICodexTicketFallbackEnabled {
+		changed = append(changed, "openai_codex_ticket_fallback_enabled")
+	}
+	if before.OpenAICodexTicketFallbackModels != after.OpenAICodexTicketFallbackModels {
+		changed = append(changed, "openai_codex_ticket_fallback_models")
+	}
 	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
 		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
 	}

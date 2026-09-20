@@ -498,6 +498,11 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		updates[SettingKeyOpenAICodexTicketTargetLength] = strconv.Itoa(settings.OpenAICodexTicketTargetLength)
 	}
 	updates[SettingKeyOpenAICodexTicketWatchdogEnabled] = strconv.FormatBool(settings.OpenAICodexTicketWatchdogEnabled)
+	updates[SettingKeyOpenAICodexTicketFallbackEnabled] = strconv.FormatBool(settings.OpenAICodexTicketFallbackEnabled)
+	if err := ValidateOpenAICodexTicketFallbackModels(settings.OpenAICodexTicketFallbackModels); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_FALLBACK_MODELS", err.Error())
+	}
+	updates[SettingKeyOpenAICodexTicketFallbackModels] = strings.TrimSpace(settings.OpenAICodexTicketFallbackModels)
 	// 同上：0 视为未指定，清空后台键回退 yaml/默认。
 	if settings.OpenAICodexTicketHarvestProbeIntervalSeconds == 0 {
 		updates[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = ""
@@ -770,6 +775,8 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.InvalidateOpenAICodexTicketTargetLengthCache()
 	s.InvalidateOpenAICodexTicketHarvestProbeIntervalCache()
 	s.InvalidateOpenAICodexTicketWatchdogCache()
+	s.InvalidateOpenAICodexTicketFallbackCache()
+	s.InvalidateOpenAICodexTicketFallbackModelsCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{

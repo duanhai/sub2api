@@ -576,6 +576,13 @@ export default {
         codexTicketWatchdog: '门票守护',
         codexTicketWatchdogDesc:
           '开启后，业务请求注入了门票、但上游返回的模型与请求模型不符（如请求 gpt-6-astra 返回 gpt-5.6-luna），或响应头带回 312 长度的 turn-state，网关会立即作废这张票并触发一次重采，账号列表会显示触发次数与原因。不重放请求、不改已发出的响应。默认开启，保存后 5 秒内生效。',
+        codexTicketFallback: '无票兜底降级',
+        codexTicketFallbackDesc:
+          '门控模型没有有效门票时，由网关把出站模型改写为下方映射的兜底模型（默认 gpt-6-astra → gpt-5.6-sol），而不是让上游悄悄降成 gpt-5.6-luna。只做一级映射，推理强度原样继承，计费按实际出站模型。开着「缺票拦截」时不兜底。默认开启，保存后 5 秒内生效。',
+        codexTicketFallbackModels: '兜底映射',
+        codexTicketFallbackModelsDesc:
+          '每行一条 from=to。留空表示使用 yaml 默认（gpt-6-astra=gpt-5.6-sol）。兜底模型自身不会再被映射。',
+        codexTicketFallbackModelsPlaceholder: 'gpt-6-astra=gpt-5.6-sol',
         codexTicketTargetLength: '门票目标长度',
         codexTicketTargetLengthDesc:
           '只接受并注入长度恰好等于此值的 x-codex-turn-state，默认 292。上游铸票格式会漂移（探测日志里出现大量 http 200 但 len 为其他值即为信号），可在此调整，保存后 5 秒内生效、无需重启。改成当前常见长度意味着探测到的票几乎都会被注入，请先确认这类票对业务无副作用。允许范围 64 到 4096。',

@@ -262,6 +262,8 @@ type UpdateSettingsRequest struct {
 	OpenAICodexTicketTargetLength                *int    `json:"openai_codex_ticket_target_length"`
 	OpenAICodexTicketHarvestProbeIntervalSeconds *int    `json:"openai_codex_ticket_harvest_probe_interval_seconds"`
 	OpenAICodexTicketWatchdogEnabled             *bool   `json:"openai_codex_ticket_watchdog_enabled"`
+	OpenAICodexTicketFallbackEnabled             *bool   `json:"openai_codex_ticket_fallback_enabled"`
+	OpenAICodexTicketFallbackModels              *string `json:"openai_codex_ticket_fallback_models"`
 	OpenAICodexTicketHarvestProxyURL             string  `json:"openai_codex_ticket_harvest_proxy_url"`
 
 	// codex_cli_only 加固（global-only）
@@ -1804,6 +1806,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketWatchdogEnabled
 		}(),
+		OpenAICodexTicketFallbackEnabled: func() bool {
+			if req.OpenAICodexTicketFallbackEnabled != nil {
+				return *req.OpenAICodexTicketFallbackEnabled
+			}
+			return previousSettings.OpenAICodexTicketFallbackEnabled
+		}(),
+		OpenAICodexTicketFallbackModels: func() string {
+			if req.OpenAICodexTicketFallbackModels != nil {
+				return strings.TrimSpace(*req.OpenAICodexTicketFallbackModels)
+			}
+			return previousSettings.OpenAICodexTicketFallbackModels
+		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2358,6 +2372,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexTicketTargetLength:                          updatedSettings.OpenAICodexTicketTargetLength,
 		OpenAICodexTicketHarvestProbeIntervalSeconds:           updatedSettings.OpenAICodexTicketHarvestProbeIntervalSeconds,
 		OpenAICodexTicketWatchdogEnabled:                       updatedSettings.OpenAICodexTicketWatchdogEnabled,
+		OpenAICodexTicketFallbackEnabled:                       updatedSettings.OpenAICodexTicketFallbackEnabled,
+		OpenAICodexTicketFallbackModels:                        updatedSettings.OpenAICodexTicketFallbackModels,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		MinCodexVersion:                                        updatedSettings.MinCodexVersion,

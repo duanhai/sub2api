@@ -142,6 +142,10 @@ type SettingService struct {
 	openAICodexTicketProbeIntervalSF    singleflight.Group
 	openAICodexTicketWatchdogCache      atomic.Value // *cachedOpenAICodexTicketSetting
 	openAICodexTicketWatchdogSF         singleflight.Group
+	openAICodexTicketFallbackCache      atomic.Value // *cachedOpenAICodexTicketSetting
+	openAICodexTicketFallbackSF         singleflight.Group
+	openAICodexTicketFallbackMapCache   atomic.Value // *cachedOpenAICodexTicketSetting
+	openAICodexTicketFallbackMapSF      singleflight.Group
 	openAICodexTicketHarvestProxyCache  atomic.Value // *cachedOpenAICodexTicketHarvestProxy
 	openAICodexTicketHarvestProxySF     singleflight.Group
 	codexRestrictionPolicyCache         atomic.Value // *cachedCodexRestrictionPolicy

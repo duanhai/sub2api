@@ -389,6 +389,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		upstreamModel := normalizeOpenAIModelForUpstream(account, account.GetMappedModel(requestModel))
+		if fallbackModel, applied := s.applyOpenAICodexTicketFallback(c.Request.Context(), c, account, upstreamModel); applied {
+			upstreamModel = fallbackModel
+		}
 		if modelMissing || upstreamModel != originalModel {
 			next, setErr := applyPayloadMutation(normalized, "model", upstreamModel)
 			if setErr != nil {

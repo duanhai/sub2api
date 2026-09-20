@@ -727,6 +727,12 @@ const (
 	// 开：业务响应里上游返回模型与请求模型不符、或响应头带回 312 长度 turn-state 时，
 	// 立即作废本次注入的门票并触发一次重采。关：只记账，不动门票。
 	SettingKeyOpenAICodexTicketWatchdogEnabled = "openai_codex_ticket_watchdog_enabled"
+	// SettingKeyOpenAICodexTicketFallbackEnabled 无票兜底降级开关（后台可改、热更新，默认开）。
+	// 开：无有效门票且未开缺票拦截时，出站前把门控模型改写为兜底模型（见 FallbackModels）。
+	SettingKeyOpenAICodexTicketFallbackEnabled = "openai_codex_ticket_fallback_enabled"
+	// SettingKeyOpenAICodexTicketFallbackModels 兜底映射表，形如 "gpt-6-astra=gpt-5.6-sol"，
+	// 多条以换行或逗号分隔；空 → 回退 yaml（默认 astra → sol）。
+	SettingKeyOpenAICodexTicketFallbackModels = "openai_codex_ticket_fallback_models"
 	// SettingKeyOpenAIAllowClaudeCodeCodexPlugin 已废弃：历史全局开关只作为升级迁移输入读取。
 	// 迁移后等价规则写入 SettingKeyCodexCLIOnlyWhitelist，不再参与运行时判定。
 	SettingKeyOpenAIAllowClaudeCodeCodexPlugin = "openai_allow_claude_code_codex_plugin"

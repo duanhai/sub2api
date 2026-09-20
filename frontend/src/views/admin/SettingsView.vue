@@ -4545,6 +4545,35 @@
                     v-model="form.openai_codex_ticket_watchdog_enabled"
                   />
                 </div>
+                <div class="flex items-center justify-between gap-4">
+                  <div class="min-w-0">
+                    <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                      {{ t("admin.settings.gatewayForwarding.codexTicketFallback") }}
+                    </h3>
+                    <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.gatewayForwarding.codexTicketFallbackDesc") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    id="codex-ticket-fallback"
+                    v-model="form.openai_codex_ticket_fallback_enabled"
+                  />
+                </div>
+                <div>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketFallbackModels") }}
+                  </h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.codexTicketFallbackModelsDesc") }}
+                  </p>
+                  <textarea
+                    id="codex-ticket-fallback-models"
+                    v-model="form.openai_codex_ticket_fallback_models"
+                    rows="2"
+                    class="input mt-3 w-full font-mono text-sm"
+                    :placeholder="t('admin.settings.gatewayForwarding.codexTicketFallbackModelsPlaceholder')"
+                  />
+                </div>
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexTicketTargetLength") }}
@@ -10067,6 +10096,8 @@ const form = reactive<SettingsForm>({
   openai_codex_ticket_target_length: 292,
   openai_codex_ticket_harvest_probe_interval_seconds: 6,
   openai_codex_ticket_watchdog_enabled: true,
+  openai_codex_ticket_fallback_enabled: true,
+  openai_codex_ticket_fallback_models: "",
   openai_codex_ticket_harvest_proxy_url: "",
   openai_codex_ticket_harvest_proxy_configured: false,
   // codex_cli_only 加固
@@ -11682,6 +11713,9 @@ async function saveSettings() {
       openai_codex_ticket_harvest_probe_interval_seconds:
         Math.floor(Number(form.openai_codex_ticket_harvest_probe_interval_seconds)) || 6,
       openai_codex_ticket_watchdog_enabled: form.openai_codex_ticket_watchdog_enabled,
+      openai_codex_ticket_fallback_enabled: form.openai_codex_ticket_fallback_enabled,
+      openai_codex_ticket_fallback_models:
+        form.openai_codex_ticket_fallback_models?.trim() || "",
       openai_codex_ticket_harvest_proxy_url:
         form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
       min_codex_version: form.min_codex_version?.trim() || "",
