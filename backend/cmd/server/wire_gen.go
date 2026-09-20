@@ -449,7 +449,9 @@ func provideCleanup(
 
 		parallelSteps := []cleanupStep{
 			{"RequestDetailService", func() error {
-				requestDetails.Stop()
+				if requestDetails != nil {
+					requestDetails.Stop()
+				}
 				return nil
 			}},
 			{"PluginManager", func() error {
