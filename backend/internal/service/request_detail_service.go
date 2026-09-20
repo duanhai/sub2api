@@ -76,7 +76,19 @@ type RequestDetail struct {
 type RequestDetailService struct {
 	liveMu          sync.RWMutex
 	liveSubscribers map[chan RequestDetail]int
+	persistentMu    sync.RWMutex // protects the sink and its enqueue-time policy
 	persistent      *requestDetailPersistentSink
+	recording       bool
+	settingsMu      sync.Mutex // serializes storage updates without blocking gateway requests
+	settingRepo     SettingRepository
+	logSettings     RequestDetailLogSettings
+	configured      bool
+	runtimeError    string
+	stop            chan struct{}
+	stopped         chan struct{}
+	stopOnce        sync.Once
+	closed          bool // guarded by settingsMu
+	settingsLoaded  bool // do not overwrite saved policy until storage has been read
 }
 
 func NewRequestDetailService() *RequestDetailService {
@@ -87,6 +99,7 @@ func newRequestDetailService(persistent *requestDetailPersistentSink) *RequestDe
 	return &RequestDetailService{
 		liveSubscribers: make(map[chan RequestDetail]int),
 		persistent:      persistent,
+		recording:       persistent != nil,
 	}
 }
 
@@ -112,14 +125,21 @@ func (s *RequestDetailService) CaptureBodyLimit() int {
 		return 0
 	}
 	limit := s.LiveBodyLimit()
-	if s.persistent != nil && s.persistent.bodyLimit > limit {
+	s.persistentMu.RLock()
+	defer s.persistentMu.RUnlock()
+	if s.recording && s.persistent != nil && s.persistent.bodyLimit > limit {
 		limit = s.persistent.bodyLimit
 	}
 	return limit
 }
 
 func (s *RequestDetailService) ConversationCaptureEnabled() bool {
-	return s != nil && s.persistent != nil && s.persistent.mode != requestDetailLogModeRaw
+	if s == nil {
+		return false
+	}
+	s.persistentMu.RLock()
+	defer s.persistentMu.RUnlock()
+	return s.recording && s.persistent != nil && s.persistent.mode != requestDetailLogModeRaw
 }
 
 func (s *RequestDetailService) SubscribeLive(bodyLimitKB int) (<-chan RequestDetail, func()) {
@@ -165,9 +185,11 @@ func (s *RequestDetailService) Publish(detail RequestDetail) {
 	if s == nil {
 		return
 	}
-	if s.persistent != nil {
+	s.persistentMu.RLock()
+	if s.recording && s.persistent != nil {
 		s.persistent.enqueue(detail)
 	}
+	s.persistentMu.RUnlock()
 	s.PublishLive(detail)
 }
 
@@ -183,6 +205,7 @@ type requestDetailPersistentSink struct {
 	writer      io.Writer
 	dropped     atomic.Uint64
 	writeErrors atomic.Uint64
+	done        chan struct{}
 }
 
 func newRequestDetailPersistentSinkFromEnv() *requestDetailPersistentSink {
@@ -226,6 +249,7 @@ func newRequestDetailPersistentSink(writer io.Writer, bodyLimit int, source stri
 		mode:      requestDetailLogModeRaw,
 		queue:     make(chan RequestDetail, queueSize),
 		writer:    writer,
+		done:      make(chan struct{}),
 	}
 	go sink.run()
 	return sink
@@ -283,6 +307,12 @@ func shouldOmitStructuredRequestBody(detail RequestDetail) bool {
 }
 
 func (s *requestDetailPersistentSink) run() {
+	defer close(s.done)
+	defer func() {
+		if closer, ok := s.writer.(io.Closer); ok {
+			_ = closer.Close()
+		}
+	}()
 	encoder := json.NewEncoder(s.writer)
 	encoder.SetEscapeHTML(false)
 	for detail := range s.queue {

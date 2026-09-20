@@ -13,6 +13,11 @@ vi.mock('@/api/admin/apiKeyQueue', () => ({
   updateAPIKeyQueueSettings: vi.fn().mockImplementation(async value => ({ ...value, configured: true })),
 }));
 
+vi.mock('@/api/admin/requestDetailLogging', () => ({
+  getRequestDetailLogging: vi.fn().mockResolvedValue({ enabled: false, mode: 'raw', body_limit_kb: 256, source: '', path: '/app/data/request-details/request-details.jsonl', configured: false, active: false, dropped: 0, write_errors: 0 }),
+  updateRequestDetailLogging: vi.fn().mockImplementation(async value => ({ ...value, configured: true, active: value.enabled })),
+}));
+
 const {
   getSettings,
   updateSettings,

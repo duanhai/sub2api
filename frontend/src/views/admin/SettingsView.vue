@@ -204,6 +204,7 @@
         <!-- Tab: Gateway -->
         <div v-show="activeTab === 'gateway'" class="space-y-6">
           <APIKeyQueueSettings />
+          <RequestDetailLoggingSettings />
           <!-- Overload Cooldown (529) Settings -->
           <div class="card">
             <div
@@ -9113,6 +9114,7 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import APIKeyQueueSettings from "@/views/admin/settings/APIKeyQueueSettings.vue";
+import RequestDetailLoggingSettings from "@/views/admin/settings/RequestDetailLoggingSettings.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
