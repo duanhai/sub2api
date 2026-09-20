@@ -1,6 +1,6 @@
 # 指定 API Key 有界等待
 
-基线：`duanhai/sub2api` 的 `a20755df`（v0.2.8）。仅在 feature 分支实现，默认关闭。
+基线：`duanhai/sub2api` 的 `a20755df`（v0.2.8）。自 v0.2.9 提供，默认关闭。
 
 ## 配置与行为
 
