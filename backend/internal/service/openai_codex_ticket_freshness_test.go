@@ -151,12 +151,13 @@ func TestRefreshOpenAICodexTickets_ReharvestKeepsOldUntilNewArrives(t *testing.T
 	require.Equal(t, 2, upstream.count())
 
 	// 关闭持续打票：原来的「有效且未临近过期就不打」行为不变。
+	offUpstream := &codexTicketBackoffUpstream{}
 	off := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, TargetLength: 292, TTLSeconds: 3600, RefreshBeforeSeconds: 600,
-		HarvestProxyURL: "socks5h://harvest.example:31", HarvestAttemptTimeoutSeconds: 5, Models: []string{"gpt-6-astra"}}, &codexTicketBackoffUpstream{})
+		HarvestProxyURL: "socks5h://harvest.example:31", HarvestAttemptTimeoutSeconds: 5, Models: []string{"gpt-6-astra"}}, offUpstream)
 	off.accountRepo = &codexTicketRefreshRepo{accounts: []Account{*account}}
 	off.storeOpenAICodexTicket(context.Background(), account, old)
 	off.refreshOpenAICodexTickets(context.Background())
-	require.Equal(t, 0, off.httpUpstream.(*codexTicketBackoffUpstream).count())
+	require.Equal(t, 0, offUpstream.count())
 }
 
 func TestValidateOpenAICodexTicketFreshnessSettings(t *testing.T) {
