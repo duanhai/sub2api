@@ -13,6 +13,11 @@ vi.mock('@/api/admin/apiKeyQueue', () => ({
   updateAPIKeyQueueSettings: vi.fn().mockImplementation(async value => ({ ...value, configured: true })),
 }));
 
+vi.mock('@/api/admin/requestDetailLogging', () => ({
+  getRequestDetailLogging: vi.fn().mockResolvedValue({ enabled: false, mode: 'raw', body_limit_kb: 256, source: '', path: '/app/data/request-details/request-details.jsonl', configured: false, active: false, dropped: 0, write_errors: 0 }),
+  updateRequestDetailLogging: vi.fn().mockImplementation(async value => ({ ...value, configured: true, active: value.enabled })),
+}));
+
 const {
   getSettings,
   updateSettings,
@@ -827,6 +832,39 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits the Codex ticket watchdog toggle", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_watchdog_enabled: true,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const toggle = wrapper.get("#codex-ticket-watchdog");
+    await toggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_watchdog_enabled).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("submits the Codex ticket fallback toggle and mapping", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_fallback_enabled: true,
+      openai_codex_ticket_fallback_models: "",
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get("#codex-ticket-fallback").setValue(false);
+    await wrapper.get("#codex-ticket-fallback-models").setValue(" gpt-6-astra=gpt-5.6-sol \n");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload.openai_codex_ticket_fallback_enabled).toBe(false);
+    expect(payload.openai_codex_ticket_fallback_models).toBe("gpt-6-astra=gpt-5.6-sol");
+    wrapper.unmount();
+  });
+
   it("submits the Codex ticket target length as an integer", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,
@@ -839,6 +877,21 @@ describe("admin SettingsView payment visible method controls", () => {
     await wrapper.find("form").trigger("submit.prevent");
     await flushPromises();
     expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_target_length).toBe(312);
+    wrapper.unmount();
+  });
+
+  it("submits the Codex ticket probe interval as an integer", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_harvest_probe_interval_seconds: 6,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const input = wrapper.get("#codex-ticket-probe-interval");
+    await input.setValue("30");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings.mock.calls[0]?.[0].openai_codex_ticket_harvest_probe_interval_seconds).toBe(30);
     wrapper.unmount();
   });
 

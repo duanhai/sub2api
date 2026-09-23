@@ -384,6 +384,11 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			upstreamModel = compactModel
 		}
 	}
+	// 无票兜底：门控模型没票时改写为兜底模型（默认 astra → sol），计费也按实际出站模型。
+	if fallbackModel, applied := s.applyOpenAICodexTicketFallback(ctx, c, account, upstreamModel); applied {
+		upstreamModel = fallbackModel
+		billingModel = fallbackModel
+	}
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
 	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses {
@@ -1443,7 +1448,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	// 客户端回带的 x-codex-turn-state 若已知由其他账号铸造（failover 换号），
 	// 剥离后再出站——异账号 blob 与本账号的（指纹收敛后）出站身份自相矛盾。
 	s.guardOpenAICodexTurnStateEcho(c, account, req.Header)
-	if err := s.applyOpenAICodexTicket(ctx, account, extractOpenAICodexTicketModel(body), req.Header); err != nil {
+	if err := s.applyOpenAICodexTicketForRequest(ctx, c, account, extractOpenAICodexTicketModel(body), req.Header); err != nil {
 		return nil, err
 	}
 	if account.UsesOpenAICodexProtocol() {

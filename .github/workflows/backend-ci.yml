@@ -42,9 +42,9 @@ jobs:
       - name: Integration tests
         working-directory: backend
         run: make test-integration
-      - name: API key queue race regressions
+      - name: API key queue and request detail race regressions
         working-directory: backend
-        run: go test -race -tags=unit -p=2 -run 'TestPersistentReader|TestAPIKeyQueue|TestAPIKeyWait|TestLoadAPIKeyQueues|TestAPIKeyConcurrency|TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_(HTTPBridgeModeRelaysHTTPStream|ClientDisconnectStillDrainsUpstream)' ./internal/service ./internal/handler ./internal/handler/admin ./internal/repository ./internal/config
+        run: go test -race -tags=unit -p=2 -run 'TestPersistentReader|TestAPIKeyQueue|TestAPIKeyWait|TestLoadAPIKeyQueues|TestAPIKeyConcurrency|TestRequestDetail|TestOpenAIGatewayService_ProxyResponsesWebSocketFromClient_(HTTPBridgeModeRelaysHTTPStream|ClientDisconnectStillDrainsUpstream)' ./internal/service ./internal/handler ./internal/handler/admin ./internal/server/middleware ./internal/repository ./internal/config
 
   frontend:
     runs-on: ubuntu-latest

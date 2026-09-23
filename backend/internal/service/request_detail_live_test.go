@@ -10,6 +10,7 @@ import (
 
 func TestRequestDetailLiveSubscriptionPublishesWithoutRedis(t *testing.T) {
 	svc := NewRequestDetailService()
+	t.Cleanup(svc.Stop)
 	events, unsubscribe := svc.SubscribeLive(512)
 	defer unsubscribe()
 
@@ -33,6 +34,7 @@ func TestRequestDetailLiveSubscriptionPublishesWithoutRedis(t *testing.T) {
 
 func TestRequestDetailLiveSubscriptionDefaultsTo256KB(t *testing.T) {
 	svc := NewRequestDetailService()
+	t.Cleanup(svc.Stop)
 	_, unsubscribe := svc.SubscribeLive(999)
 	if got := svc.LiveBodyLimit(); got != 256*1024 {
 		t.Fatalf("LiveBodyLimit() = %d, want %d", got, 256*1024)
@@ -45,6 +47,7 @@ func TestRequestDetailLiveSubscriptionDefaultsTo256KB(t *testing.T) {
 
 func TestRequestDetailLiveSubscriptionAllows1MB(t *testing.T) {
 	svc := NewRequestDetailService()
+	t.Cleanup(svc.Stop)
 	_, unsubscribe := svc.SubscribeLive(1024)
 	defer unsubscribe()
 
@@ -62,6 +65,7 @@ func TestRequestDetailPersistentSinkWritesJSONWithoutLiveSubscriber(t *testing.T
 
 	sink := newRequestDetailPersistentSink(file, 256*1024, "test-source", 4)
 	svc := newRequestDetailService(sink)
+	t.Cleanup(svc.Stop)
 	if got := svc.CaptureBodyLimit(); got != 256*1024 {
 		t.Fatalf("CaptureBodyLimit() = %d, want %d", got, 256*1024)
 	}
@@ -97,8 +101,10 @@ func (w *blockingRequestDetailWriter) Write(p []byte) (int, error) {
 
 func TestRequestDetailPersistentQueueNeverBlocksPublisher(t *testing.T) {
 	writer := &blockingRequestDetailWriter{started: make(chan struct{}, 1), release: make(chan struct{})}
+	defer close(writer.release)
 	sink := newRequestDetailPersistentSink(writer, 256*1024, "", 1)
 	svc := newRequestDetailService(sink)
+	t.Cleanup(svc.Stop)
 	svc.Publish(RequestDetail{ID: "first"})
 	select {
 	case <-writer.started:
@@ -115,7 +121,6 @@ func TestRequestDetailPersistentQueueNeverBlocksPublisher(t *testing.T) {
 	if sink.dropped.Load() != 1 {
 		t.Fatalf("dropped = %d, want 1", sink.dropped.Load())
 	}
-	close(writer.release)
 }
 
 func TestRequestDetailPersistentBodyLimitDefaultsAndValidation(t *testing.T) {
@@ -153,6 +158,7 @@ func TestRequestDetailStructuredSinkOmitsRawBody(t *testing.T) {
 	sink := newRequestDetailPersistentSink(file, 256*1024, "test-source", 4)
 	sink.mode = requestDetailLogModeStructured
 	svc := newRequestDetailService(sink)
+	t.Cleanup(svc.Stop)
 	svc.Publish(RequestDetail{
 		ID: "req-structured", Path: "/v1/responses", StatusCode: 200,
 		RequestBody: `{"input":"raw"}`, BodyState: RequestBodyCaptured,

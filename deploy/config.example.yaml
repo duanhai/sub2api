@@ -352,6 +352,10 @@ gateway:
     # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
     # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
     harvest_proxy_url: ""
+    # Probe cadence. 6s was the original design; probes add to the account's request rate and
+    # too dense a cadence draws upstream 429s (seen in production). On 429 the harvester backs
+    # off exponentially per account (interval × 2^n, capped at 5 min). Hot-adjustable in the Admin UI.
+    # 探测周期。6 秒叠加业务流量会招来上游 429；命中 429 后按账号指数退避（上限 5 分钟）。后台可热改。
     harvest_probe_interval_seconds: 6
     harvest_attempt_timeout_seconds: 25
     # fail_closed (缺票拦截), default false: tickets are an enhancement. Without a valid
@@ -364,6 +368,13 @@ gateway:
     models:
       - gpt-6-astra
       - gpt-5.6-sol
+    # Without a valid ticket (and fail_closed off) the gateway rewrites the outbound model to the
+    # fallback below instead of letting the upstream silently serve gpt-5.6-luna. One level only;
+    # the fallback model is never mapped again. reasoning.effort is inherited. Admin UI can override.
+    # 无票且未开缺票拦截时，出站前把门控模型改写为兜底模型（默认 astra → sol），由网关选降级目标，
+    # 而不是让上游悄悄降成 luna。只做一级；推理强度原样继承。后台可热改。
+    fallback_models:
+      gpt-6-astra: gpt-5.6-sol
   # ChatGPT Frameless Live 单会话硬上限（秒）。
   live:
     max_session_duration_seconds: 3600

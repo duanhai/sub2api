@@ -912,6 +912,31 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	if result.OpenAICodexTicketTargetLength <= 0 {
 		result.OpenAICodexTicketTargetLength = openAICodexTicketDefaultTargetLength
 	}
+	// 探测周期：后台键优先（须在允许区间内），缺失回退 yaml，再回退 6 秒。
+	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds])); err == nil && ValidateOpenAICodexTicketHarvestProbeInterval(n) == nil {
+		result.OpenAICodexTicketHarvestProbeIntervalSeconds = n
+	} else if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.HarvestProbeIntervalSeconds > 0 {
+		result.OpenAICodexTicketHarvestProbeIntervalSeconds = s.cfg.Gateway.OpenAICodexTicket.HarvestProbeIntervalSeconds
+	}
+	if result.OpenAICodexTicketHarvestProbeIntervalSeconds <= 0 {
+		result.OpenAICodexTicketHarvestProbeIntervalSeconds = openAICodexTicketDefaultProbeIntervalSeconds
+	}
+	// 门票守护默认开启：缺失/空值一律视为开启。
+	if v, ok := settings[SettingKeyOpenAICodexTicketWatchdogEnabled]; ok && v != "" {
+		result.OpenAICodexTicketWatchdogEnabled = v == "true"
+	} else {
+		result.OpenAICodexTicketWatchdogEnabled = true
+	}
+	// 无票兜底降级默认开启；映射表后台优先，缺失回退 yaml。
+	if v, ok := settings[SettingKeyOpenAICodexTicketFallbackEnabled]; ok && v != "" {
+		result.OpenAICodexTicketFallbackEnabled = v == "true"
+	} else {
+		result.OpenAICodexTicketFallbackEnabled = true
+	}
+	result.OpenAICodexTicketFallbackModels = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketFallbackModels])
+	if result.OpenAICodexTicketFallbackModels == "" && s != nil && s.cfg != nil {
+		result.OpenAICodexTicketFallbackModels = FormatOpenAICodexTicketFallbackModels(s.cfg.Gateway.OpenAICodexTicket.FallbackModels)
+	}
 	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	// codex_cli_only 加固
 	result.MinCodexVersion = settings[SettingKeyMinCodexVersion]

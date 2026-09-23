@@ -105,3 +105,54 @@ func TestSettingsCodexTicketTargetLengthWriteReadValidate(t *testing.T) {
 	require.Equal(t, http.StatusOK, get.Code)
 	require.Contains(t, get.Body.String(), `"openai_codex_ticket_target_length":312`)
 }
+
+func TestSettingsCodexTicketProbeIntervalWriteReadValidate(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	require.Equal(t, 6, h.settingService.GetOpenAICodexTicketHarvestProbeIntervalSeconds(context.Background(), 6))
+	rec := doUpdateSettings(t, h, map[string]any{key: 30}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "30", repo.values[key])
+	require.Equal(t, 30, h.settingService.GetOpenAICodexTicketHarvestProbeIntervalSeconds(context.Background(), 6))
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_harvest_probe_interval_seconds":30`)
+	rec = doUpdateSettings(t, h, map[string]any{key: 2}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "30", repo.values[key])
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "30", repo.values[key])
+}
+
+func TestSettingsCodexTicketWatchdogDefaultsOnAndHotReloads(t *testing.T) {
+	key := service.SettingKeyOpenAICodexTicketWatchdogEnabled
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	require.True(t, h.settingService.GetOpenAICodexTicketWatchdogEnabled(context.Background(), true))
+	get := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(get)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+	h.GetSettings(c)
+	require.Contains(t, get.Body.String(), `"openai_codex_ticket_watchdog_enabled":true`)
+
+	rec := doUpdateSettings(t, h, map[string]any{key: false}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[key])
+	require.False(t, h.settingService.GetOpenAICodexTicketWatchdogEnabled(context.Background(), true))
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[key])
+}
+
+func TestSettingsCodexTicketFallbackWriteReadValidate(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	rec := doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_fallback_enabled": false, "openai_codex_ticket_fallback_models": "gpt-6-astra=gpt-5.6-terra"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketFallbackEnabled])
+	require.Equal(t, "gpt-6-astra=gpt-5.6-terra", repo.values[service.SettingKeyOpenAICodexTicketFallbackModels])
+	require.Contains(t, rec.Body.String(), `"openai_codex_ticket_fallback_models":"gpt-6-astra=gpt-5.6-terra"`)
+	rec = doUpdateSettings(t, h, map[string]any{"openai_codex_ticket_fallback_models": "not-a-mapping"}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, "gpt-6-astra=gpt-5.6-terra", repo.values[service.SettingKeyOpenAICodexTicketFallbackModels])
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketFallbackEnabled])
+}

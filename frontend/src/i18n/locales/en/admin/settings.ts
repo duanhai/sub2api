@@ -1,5 +1,29 @@
 export default {
     settings: {
+      requestDetailLogging: {
+        title: 'Request detail recording',
+        description: 'Write request details to local files for later inspection or external collection. May include user conversations; disabled on new installations.',
+        enabled: 'Enable file recording',
+        mode: 'Recorded content',
+        raw: 'Original request body',
+        dual: 'Original body + extracted conversation',
+        structured: 'Prefer extracted conversation; retain original when extraction fails',
+        bodyLimit: 'Request body limit per record',
+        source: 'Source label (optional, e.g. service domain)',
+        path: 'Current log file path (read-only)',
+        pathHint: 'Existing deployments retain their path; new ones use /app/data/request-details/request-details.jsonl. Migrate the database and data volume, retaining legacy mounts and external collector configuration.',
+        legacy: 'No panel settings saved yet; environment settings apply. Saving overrides the recording policy and retains the current log path.',
+        effect: 'Saving applies without restart; other instances normally sync within 5 seconds. Disabling stops new file records and drains queued records; existing files and live viewing are unaffected. Logging never blocks requests and may drop records when its queue is full.',
+        active: 'This instance: file recording enabled',
+        inactive: 'This instance: file recording disabled',
+        failures: 'Since startup: {dropped} records dropped due to a full queue; {errors} writes failed. Reload to update status.',
+        save: 'Save recording settings',
+        saved: 'Recording settings saved',
+        reload: 'Reload',
+        invalid: 'Body limit must be 256 or 512 KB. Source must be at most 256 bytes with no line breaks.',
+        loadFailed: 'Unable to load recording settings. Please retry.',
+        saveFailed: 'Unable to save recording settings. Check database and log directory permissions, then retry.',
+      },
       apiKeyQueue: {
         title: 'API Key concurrency queue',
         description: 'Keys with a positive concurrency limit automatically use their own limit and wait in a separate queue when full. Waiters do not occupy user or upstream account slots. Keys with a zero limit do not queue.',
@@ -580,9 +604,22 @@ export default {
         codexTicketFailClosed: "Block requests without a ticket",
         codexTicketFailClosedDesc:
           "Off by default: without a valid ticket the gateway forwards the request unchanged and lets the upstream decide, so a harvest outage never blocks traffic. When on, accounts without a valid ticket are paused for the gated models, and a harvest proxy outage takes those models down. Applies immediately without a restart.",
+        codexTicketWatchdog: "Ticket watchdog",
+        codexTicketWatchdogDesc:
+          "When on, if a request that carried an injected ticket comes back served by a different model (for example gpt-6-astra answered as gpt-5.6-luna) or with a 312-length turn-state in the response, the gateway invalidates that ticket immediately and triggers a re-harvest. The account list shows trigger count and reason. Requests are never replayed and responses are never altered. On by default, applies within seconds.",
+        codexTicketFallback: "Fallback model without a ticket",
+        codexTicketFallbackDesc:
+          "When a gated model has no valid ticket, the gateway rewrites the outbound model to the mapped fallback below (default gpt-6-astra → gpt-5.6-sol) instead of letting the upstream silently serve gpt-5.6-luna. One level only, reasoning effort is inherited, billing follows the model actually sent. Not applied while fail-closed is on. On by default, applies within seconds.",
+        codexTicketFallbackModels: "Fallback mapping",
+        codexTicketFallbackModelsDesc:
+          "One from=to per line. Leave blank to use the yaml default (gpt-6-astra=gpt-5.6-sol). A fallback model is never mapped again.",
+        codexTicketFallbackModelsPlaceholder: "gpt-6-astra=gpt-5.6-sol",
         codexTicketTargetLength: "Ticket target length",
         codexTicketTargetLengthDesc:
           "Only x-codex-turn-state values of exactly this length are stored and injected (default 292). The upstream mint format drifts; many probe misses with HTTP 200 and a different len are the signal. Changes apply within seconds without a restart. Setting it to the currently common length means nearly every probed ticket gets injected, so confirm such tickets are harmless first. Allowed range 64 to 4096.",
+        codexTicketProbeInterval: "Harvest probe interval (seconds)",
+        codexTicketProbeIntervalDesc:
+          "How often the harvester probes accounts that lack a ticket or are about to expire (default 6). Probes add to the account's own request rate; too dense a cadence draws upstream 429s and can drag production requests into the same throttle. After a 429 the harvester backs off exponentially per account, up to 5 minutes. Allowed range 5 to 600, applies within seconds.",
         codexTicketHarvestProxy: "292 harvest proxy",
         codexTicketHarvestProxyDesc:
           "Used only for minting 292 tickets when the ticket feature is enabled. Changes apply to subsequent probes without a restart. Production traffic still uses each account's residential proxy. Paste a full HTTP or SOCKS5h proxy URL including username and password. The proxy provider must handle IP rotation. Leave blank when saving to keep the stored value.",

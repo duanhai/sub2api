@@ -6,10 +6,12 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 )
 
@@ -260,4 +262,128 @@ func TestUpdateSettingsWithoutCodexTicketTargetLengthKeepsDefault(t *testing.T) 
 
 	require.Error(t, svc.UpdateSettings(context.Background(), &SystemSettings{OpenAICodexTicketTargetLength: 10}))
 	require.Equal(t, "", repo.values[SettingKeyOpenAICodexTicketTargetLength], "rejected value must not be written")
+}
+
+// 探测周期是后台热设置：yaml 只是回退值。
+func TestCodexTicketProbeIntervalRuntimeSettingOverridesYaml(t *testing.T) {
+	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
+	settings := NewSettingService(repo, &config.Config{})
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true, HarvestProbeIntervalSeconds: 6}, nil)
+	svc.settingService = settings
+	require.Equal(t, 6, svc.openAICodexTicketConfig().HarvestProbeIntervalSeconds)
+	repo.values[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = "30"
+	settings.InvalidateOpenAICodexTicketHarvestProbeIntervalCache()
+	require.Equal(t, 30, svc.openAICodexTicketConfig().HarvestProbeIntervalSeconds)
+	for _, bad := range []string{"1", "601", "abc", "-5"} {
+		repo.values[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = bad
+		settings.InvalidateOpenAICodexTicketHarvestProbeIntervalCache()
+		require.Equal(t, 6, svc.openAICodexTicketConfig().HarvestProbeIntervalSeconds, bad)
+	}
+	require.NoError(t, svc.settingService.UpdateSettings(context.Background(), &SystemSettings{}))
+	require.Equal(t, "", repo.values[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds])
+	require.Error(t, svc.settingService.UpdateSettings(context.Background(), &SystemSettings{OpenAICodexTicketHarvestProbeIntervalSeconds: 2}))
+}
+
+// codexTicketBackoffUpstream 是并发安全的探测桩：按顺序吐出预设响应，记录请求数。
+type codexTicketBackoffUpstream struct {
+	mu        sync.Mutex
+	responses []*http.Response
+	requests  int
+}
+
+func (u *codexTicketBackoffUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	if req != nil && req.Body != nil {
+		_ = req.Body.Close()
+	}
+	u.requests++
+	if len(u.responses) == 0 {
+		return &http.Response{StatusCode: http.StatusServiceUnavailable, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("{}"))}, nil
+	}
+	resp := u.responses[0]
+	u.responses = u.responses[1:]
+	return resp, nil
+}
+
+func (u *codexTicketBackoffUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+func (u *codexTicketBackoffUpstream) count() int {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return u.requests
+}
+
+// 上游 429 按账号指数退避：退避窗口内整个账号不再探测，任何非 429 结果清零。
+func TestHarvestOpenAICodexTicket_BacksOffOn429(t *testing.T) {
+	mk := func(status int, state string) *http.Response {
+		h := http.Header{}
+		if state != "" {
+			h.Set(openAICodexTurnStateHeader, state)
+		}
+		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader("{}"))}
+	}
+	upstream := &codexTicketBackoffUpstream{responses: []*http.Response{
+		mk(http.StatusTooManyRequests, ""),           // 第一轮 astra
+		mk(http.StatusTooManyRequests, ""),           // 第一轮 sol
+		mk(http.StatusTooManyRequests, ""),           // 第三次 429
+		mk(http.StatusOK, fakeCodexTicketState(312)), // 312 miss → 清零
+		mk(http.StatusOK, fakeCodexTicketState(292)),
+		mk(http.StatusOK, fakeCodexTicketState(292)),
+	}}
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
+		Enabled:                      true,
+		TargetLength:                 292,
+		TTLSeconds:                   3600,
+		HarvestProxyURL:              "socks5h://harvest.example:31",
+		HarvestAttemptTimeoutSeconds: 5,
+		HarvestProbeIntervalSeconds:  30,
+	}, upstream)
+	account := ticketTestAccount(41)
+	account.Status = StatusActive
+	svc.accountRepo = &codexTicketRefreshRepo{accounts: []Account{*account}}
+
+	// 第一轮：两模型各打一发，都 429。退避以 30s 为基数指数增长：30s → 60s。
+	svc.refreshOpenAICodexTickets(context.Background())
+	require.Equal(t, 2, upstream.count())
+	b := svc.openAICodexTicketBackoffFor(41)
+	require.Equal(t, 2, b.consecutive429)
+	require.WithinDuration(t, time.Now().Add(60*time.Second), b.until, 3*time.Second)
+
+	// 退避窗口内：整轮跳过，不发任何请求。
+	svc.refreshOpenAICodexTickets(context.Background())
+	require.Equal(t, 2, upstream.count())
+
+	// 窗口过去后再打，第三次 429 → 120s。
+	svc.openaiCodexTicketBackoff.Store(int64(41), openAICodexTicketBackoff{consecutive429: 2, until: time.Now().Add(-time.Second)})
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	b = svc.openAICodexTicketBackoffFor(41)
+	require.Equal(t, 3, b.consecutive429)
+	require.WithinDuration(t, time.Now().Add(120*time.Second), b.until, 3*time.Second)
+
+	// 非 429 结果（这里是 312 miss）清零退避。
+	svc.openaiCodexTicketBackoff.Store(int64(41), openAICodexTicketBackoff{consecutive429: 3, until: time.Now().Add(-time.Second)})
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	require.Equal(t, 0, svc.openAICodexTicketBackoffFor(41).consecutive429)
+	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+
+	// 之后正常命中。
+	svc.refreshOpenAICodexTickets(context.Background())
+	require.NotNil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
+	require.NotNil(t, svc.lookupOpenAICodexTicket(account, "gpt-5.6-sol"))
+}
+
+func TestOpenAICodexTicketBackoffCapsAtFiveMinutes(t *testing.T) {
+	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: true}, nil)
+	now := time.Now()
+	var wait time.Duration
+	for i := 0; i < 12; i++ {
+		wait = svc.noteOpenAICodexTicketProbe429(7, now, 30*time.Second)
+	}
+	require.Equal(t, openAICodexTicketBackoffMax, wait)
+	require.Equal(t, 12, svc.openAICodexTicketBackoffFor(7).consecutive429)
+	svc.clearOpenAICodexTicketBackoff(7)
+	require.Equal(t, 0, svc.openAICodexTicketBackoffFor(7).consecutive429)
 }

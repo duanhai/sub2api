@@ -38,6 +38,7 @@ func TestDecodeCapturedBodyGzip(t *testing.T) {
 func TestRequestDetailCaptureSkipsInternalTopicSummaryRequest(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "test-key")
 	details := service.NewRequestDetailService()
+	t.Cleanup(details.Stop)
 	events, unsubscribe := details.SubscribeLive(256)
 	defer unsubscribe()
 
@@ -70,6 +71,7 @@ func TestRequestDetailCapturePersistsWithoutLiveSubscriber(t *testing.T) {
 	t.Setenv("SUB2API_REQUEST_DETAIL_LOG_PATH", logPath)
 	t.Setenv("SUB2API_REQUEST_DETAIL_LOG_SOURCE", "test-server")
 	details := service.NewRequestDetailService()
+	t.Cleanup(details.Stop)
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -120,6 +122,7 @@ func TestDecodeCapturedBodyHonorsDecodedLimit(t *testing.T) {
 
 func TestRequestDetailCaptureIncludesBoundConversationObservation(t *testing.T) {
 	details := service.NewRequestDetailService()
+	t.Cleanup(details.Stop)
 	events, unsubscribe := details.SubscribeLive(256)
 	defer unsubscribe()
 

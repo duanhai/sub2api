@@ -371,6 +371,9 @@ func (h *AccountHandler) enrichCodexTicketStatus(account *service.Account, out *
 			cfg.TargetLength = h.codexTicketSettings.GetOpenAICodexTicketTargetLength(context.Background(), cfg.TargetLength)
 		}
 		out.CodexTurnTickets = service.OpenAICodexTicketStatuses(account, cfg, time.Now())
+		if len(out.CodexTurnTickets) > 0 {
+			out.CodexTicketWatchdog = service.OpenAICodexTicketWatchdogStatusOf(account)
+		}
 	}
 }
 
