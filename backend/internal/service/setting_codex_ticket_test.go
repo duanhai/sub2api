@@ -325,13 +325,13 @@ func TestHarvestOpenAICodexTicket_BacksOffOn429(t *testing.T) {
 		}
 		return &http.Response{StatusCode: status, Header: h, Body: io.NopCloser(strings.NewReader("{}"))}
 	}
+	// 只配一个模型：多模型时各模型并发探测，先回来的 429 会让另一个模型在退避窗口内
+	// 跳过探测，探测次数取决于时序（生产上这是期望行为，但测试不能依赖它）。
 	upstream := &codexTicketBackoffUpstream{responses: []*http.Response{
-		mk(http.StatusTooManyRequests, ""),           // 第一轮 astra
-		mk(http.StatusTooManyRequests, ""),           // 第一轮 sol
-		mk(http.StatusTooManyRequests, ""),           // 第三次 429
+		mk(http.StatusTooManyRequests, ""),           // 第 1 次 429 → 退避 30s
+		mk(http.StatusTooManyRequests, ""),           // 第 2 次 429 → 退避 60s
 		mk(http.StatusOK, fakeCodexTicketState(312)), // 312 miss → 清零
-		mk(http.StatusOK, fakeCodexTicketState(292)),
-		mk(http.StatusOK, fakeCodexTicketState(292)),
+		mk(http.StatusOK, fakeCodexTicketState(292)), // 命中
 	}}
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{
 		Enabled:                      true,
@@ -340,39 +340,43 @@ func TestHarvestOpenAICodexTicket_BacksOffOn429(t *testing.T) {
 		HarvestProxyURL:              "socks5h://harvest.example:31",
 		HarvestAttemptTimeoutSeconds: 5,
 		HarvestProbeIntervalSeconds:  30,
+		Models:                       []string{"gpt-6-astra"},
 	}, upstream)
 	account := ticketTestAccount(41)
 	account.Status = StatusActive
 	svc.accountRepo = &codexTicketRefreshRepo{accounts: []Account{*account}}
 
-	// 第一轮：两模型各打一发，都 429。退避以 30s 为基数指数增长：30s → 60s。
+	// 第一轮：429 → 退避 = 探测周期 30s。
+	svc.refreshOpenAICodexTickets(context.Background())
+	require.Equal(t, 1, upstream.count())
+	b := svc.openAICodexTicketBackoffFor(41)
+	require.Equal(t, 1, b.consecutive429)
+	require.WithinDuration(t, time.Now().Add(30*time.Second), b.until, 3*time.Second)
+
+	// 退避窗口内：整轮跳过，单次探测入口也跳过。
+	svc.refreshOpenAICodexTickets(context.Background())
+	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	require.Equal(t, 1, upstream.count())
+
+	// 窗口过去后再打，第 2 次 429 → 指数翻倍到 60s。
+	svc.openaiCodexTicketBackoff.Store(int64(41), openAICodexTicketBackoff{consecutive429: 1, until: time.Now().Add(-time.Second)})
 	svc.refreshOpenAICodexTickets(context.Background())
 	require.Equal(t, 2, upstream.count())
-	b := svc.openAICodexTicketBackoffFor(41)
+	b = svc.openAICodexTicketBackoffFor(41)
 	require.Equal(t, 2, b.consecutive429)
 	require.WithinDuration(t, time.Now().Add(60*time.Second), b.until, 3*time.Second)
 
-	// 退避窗口内：整轮跳过，不发任何请求。
-	svc.refreshOpenAICodexTickets(context.Background())
-	require.Equal(t, 2, upstream.count())
-
-	// 窗口过去后再打，第三次 429 → 120s。
+	// 非 429 结果（这里是 312 miss）清零退避，且不落票。
 	svc.openaiCodexTicketBackoff.Store(int64(41), openAICodexTicketBackoff{consecutive429: 2, until: time.Now().Add(-time.Second)})
-	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
-	b = svc.openAICodexTicketBackoffFor(41)
-	require.Equal(t, 3, b.consecutive429)
-	require.WithinDuration(t, time.Now().Add(120*time.Second), b.until, 3*time.Second)
-
-	// 非 429 结果（这里是 312 miss）清零退避。
-	svc.openaiCodexTicketBackoff.Store(int64(41), openAICodexTicketBackoff{consecutive429: 3, until: time.Now().Add(-time.Second)})
-	svc.probeOnceOpenAICodexTicket(context.Background(), account, "gpt-6-astra")
+	svc.refreshOpenAICodexTickets(context.Background())
+	require.Equal(t, 3, upstream.count())
 	require.Equal(t, 0, svc.openAICodexTicketBackoffFor(41).consecutive429)
 	require.Nil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
 
 	// 之后正常命中。
 	svc.refreshOpenAICodexTickets(context.Background())
+	require.Equal(t, 4, upstream.count())
 	require.NotNil(t, svc.lookupOpenAICodexTicket(account, "gpt-6-astra"))
-	require.NotNil(t, svc.lookupOpenAICodexTicket(account, "gpt-5.6-sol"))
 }
 
 func TestOpenAICodexTicketBackoffCapsAtFiveMinutes(t *testing.T) {
