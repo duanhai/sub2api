@@ -477,6 +477,86 @@ func (s *SettingService) InvalidateOpenAICodexTicketFallbackModelsCache() {
 	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketFallbackMapCache, &s.openAICodexTicketFallbackMapSF, SettingKeyOpenAICodexTicketFallbackModels)
 }
 
+// getOpenAICodexTicketIntSetting 读取一个整数型热设置；缺失、非法或校验不过回退 fallback。
+func (s *SettingService) getOpenAICodexTicketIntSetting(ctx context.Context, cache *atomic.Value, sf *singleflight.Group, key string, fallback int, validate func(int) error) int {
+	if s == nil {
+		return fallback
+	}
+	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, cache, sf, key)
+	if !ok || raw == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || (validate != nil && validate(n) != nil) {
+		return fallback
+	}
+	return n
+}
+
+// GetOpenAICodexTicketTTLSeconds 返回新票有效期（秒）；缺失回退 fallback（yaml，默认 3600）。
+func (s *SettingService) GetOpenAICodexTicketTTLSeconds(ctx context.Context, fallback int) int {
+	if s == nil {
+		return fallback
+	}
+	return s.getOpenAICodexTicketIntSetting(ctx, &s.openAICodexTicketTTLCache, &s.openAICodexTicketTTLSF, SettingKeyOpenAICodexTicketTTLSeconds, fallback, ValidateOpenAICodexTicketTTLSeconds)
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketTTLCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketTTLCache, &s.openAICodexTicketTTLSF, SettingKeyOpenAICodexTicketTTLSeconds)
+}
+
+// GetOpenAICodexTicketReharvestAfterSeconds 返回拿到票后继续打下一张的间隔（秒，0 关闭）。
+func (s *SettingService) GetOpenAICodexTicketReharvestAfterSeconds(ctx context.Context, fallback int) int {
+	if s == nil {
+		return fallback
+	}
+	return s.getOpenAICodexTicketIntSetting(ctx, &s.openAICodexTicketReharvestCache, &s.openAICodexTicketReharvestSF, SettingKeyOpenAICodexTicketReharvestAfterSeconds, fallback, ValidateOpenAICodexTicketReharvestAfterSeconds)
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketReharvestCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketReharvestCache, &s.openAICodexTicketReharvestSF, SettingKeyOpenAICodexTicketReharvestAfterSeconds)
+}
+
+// GetOpenAICodexTicketCookieEnabled 返回「随票复用 Cookie」开关；缺失回退 fallback（默认 true）。
+func (s *SettingService) GetOpenAICodexTicketCookieEnabled(ctx context.Context, fallback bool) bool {
+	if s == nil {
+		return fallback
+	}
+	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketCookieCache, &s.openAICodexTicketCookieSF, SettingKeyOpenAICodexTicketCookieEnabled)
+	if !ok || raw == "" {
+		return fallback
+	}
+	return raw == "true"
+}
+
+func (s *SettingService) InvalidateOpenAICodexTicketCookieCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketCookieCache, &s.openAICodexTicketCookieSF, SettingKeyOpenAICodexTicketCookieEnabled)
+}
+
+// GetUpstreamModelNotFoundCooldownSeconds 返回上游「模型不存在」冷却秒数（0 表示不冷却）。
+func (s *SettingService) GetUpstreamModelNotFoundCooldownSeconds(ctx context.Context, fallback int) int {
+	if s == nil {
+		return fallback
+	}
+	return s.getOpenAICodexTicketIntSetting(ctx, &s.upstreamModelNotFoundCooldownCache, &s.upstreamModelNotFoundCooldownSF, SettingKeyUpstreamModelNotFoundCooldownSeconds, fallback, ValidateUpstreamModelNotFoundCooldownSeconds)
+}
+
+func (s *SettingService) InvalidateUpstreamModelNotFoundCooldownCache() {
+	if s == nil {
+		return
+	}
+	invalidateOpenAICodexTicketSettingCache(&s.upstreamModelNotFoundCooldownCache, &s.upstreamModelNotFoundCooldownSF, SettingKeyUpstreamModelNotFoundCooldownSeconds)
+}
+
 type cachedOpenAICodexTicketHarvestProxy struct {
 	value     string
 	expiresAt int64

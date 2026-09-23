@@ -257,6 +257,10 @@ type SystemSettings struct {
 	OpenAICodexTicketWatchdogEnabled             bool   // Codex 门票守护：响应模型不符/312 回执即作废门票并重采（默认开）
 	OpenAICodexTicketFallbackEnabled             bool   // Codex 无票兜底降级：无票时出站改写为兜底模型（默认开）
 	OpenAICodexTicketFallbackModels              string // 兜底映射原文，如 "gpt-6-astra=gpt-5.6-sol"；空回退 yaml
+	OpenAICodexTicketTTLSeconds                  int    // 新票有效期（秒）
+	OpenAICodexTicketReharvestAfterSeconds       int    // 拿到票后继续打下一张的间隔（秒，0 关闭）
+	OpenAICodexTicketCookieEnabled               bool   // 随票复用打票时拿到的 Cookie（默认开）
+	UpstreamModelNotFoundCooldownSeconds         int    // 上游模型不存在冷却秒数（0 不冷却，默认 1800）
 	OpenAICodexTicketHarvestProxyURL             string // Codex 292 打票代理 URL；空则回退 yaml/env
 	MinCodexVersion                              string // codex_cli_only 最低 Codex 引擎版本；空=不检查
 	MaxCodexVersion                              string // codex_cli_only 最高 Codex 引擎版本；空=不检查

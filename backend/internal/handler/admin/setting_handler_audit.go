@@ -503,6 +503,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAICodexTicketFallbackModels != after.OpenAICodexTicketFallbackModels {
 		changed = append(changed, "openai_codex_ticket_fallback_models")
 	}
+	if before.OpenAICodexTicketTTLSeconds != after.OpenAICodexTicketTTLSeconds {
+		changed = append(changed, "openai_codex_ticket_ttl_seconds")
+	}
+	if before.OpenAICodexTicketReharvestAfterSeconds != after.OpenAICodexTicketReharvestAfterSeconds {
+		changed = append(changed, "openai_codex_ticket_reharvest_after_seconds")
+	}
+	if before.OpenAICodexTicketCookieEnabled != after.OpenAICodexTicketCookieEnabled {
+		changed = append(changed, "openai_codex_ticket_cookie_enabled")
+	}
+	if before.UpstreamModelNotFoundCooldownSeconds != after.UpstreamModelNotFoundCooldownSeconds {
+		changed = append(changed, "upstream_model_not_found_cooldown_seconds")
+	}
 	if before.OpenAICodexTicketHarvestProxyURL != after.OpenAICodexTicketHarvestProxyURL {
 		changed = append(changed, "openai_codex_ticket_harvest_proxy_url")
 	}

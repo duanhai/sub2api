@@ -503,6 +503,24 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_FALLBACK_MODELS", err.Error())
 	}
 	updates[SettingKeyOpenAICodexTicketFallbackModels] = strings.TrimSpace(settings.OpenAICodexTicketFallbackModels)
+	// TTL：0 视为未指定，清空回退 yaml；其余值做区间校验。
+	if settings.OpenAICodexTicketTTLSeconds == 0 {
+		updates[SettingKeyOpenAICodexTicketTTLSeconds] = ""
+	} else {
+		if err := ValidateOpenAICodexTicketTTLSeconds(settings.OpenAICodexTicketTTLSeconds); err != nil {
+			return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_TTL", err.Error())
+		}
+		updates[SettingKeyOpenAICodexTicketTTLSeconds] = strconv.Itoa(settings.OpenAICodexTicketTTLSeconds)
+	}
+	if err := ValidateOpenAICodexTicketReharvestAfterSeconds(settings.OpenAICodexTicketReharvestAfterSeconds); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_REHARVEST", err.Error())
+	}
+	updates[SettingKeyOpenAICodexTicketReharvestAfterSeconds] = strconv.Itoa(settings.OpenAICodexTicketReharvestAfterSeconds)
+	updates[SettingKeyOpenAICodexTicketCookieEnabled] = strconv.FormatBool(settings.OpenAICodexTicketCookieEnabled)
+	if err := ValidateUpstreamModelNotFoundCooldownSeconds(settings.UpstreamModelNotFoundCooldownSeconds); err != nil {
+		return nil, infraerrors.BadRequest("INVALID_MODEL_NOT_FOUND_COOLDOWN", err.Error())
+	}
+	updates[SettingKeyUpstreamModelNotFoundCooldownSeconds] = strconv.Itoa(settings.UpstreamModelNotFoundCooldownSeconds)
 	// 同上：0 视为未指定，清空后台键回退 yaml/默认。
 	if settings.OpenAICodexTicketHarvestProbeIntervalSeconds == 0 {
 		updates[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = ""
@@ -777,6 +795,10 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.InvalidateOpenAICodexTicketWatchdogCache()
 	s.InvalidateOpenAICodexTicketFallbackCache()
 	s.InvalidateOpenAICodexTicketFallbackModelsCache()
+	s.InvalidateOpenAICodexTicketTTLCache()
+	s.InvalidateOpenAICodexTicketReharvestCache()
+	s.InvalidateOpenAICodexTicketCookieCache()
+	s.InvalidateUpstreamModelNotFoundCooldownCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{

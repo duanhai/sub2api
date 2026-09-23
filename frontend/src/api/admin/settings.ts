@@ -646,6 +646,10 @@ export interface SystemSettings {
   openai_codex_ticket_watchdog_enabled: boolean;
   openai_codex_ticket_fallback_enabled: boolean;
   openai_codex_ticket_fallback_models: string;
+  openai_codex_ticket_ttl_seconds: number;
+  openai_codex_ticket_reharvest_after_seconds: number;
+  openai_codex_ticket_cookie_enabled: boolean;
+  upstream_model_not_found_cooldown_seconds: number;
   openai_codex_ticket_harvest_proxy_url: string;
   openai_codex_ticket_harvest_proxy_configured: boolean;
   // codex_cli_only 加固
@@ -974,6 +978,10 @@ export interface UpdateSettingsRequest {
   openai_codex_ticket_watchdog_enabled?: boolean;
   openai_codex_ticket_fallback_enabled?: boolean;
   openai_codex_ticket_fallback_models?: string;
+  openai_codex_ticket_ttl_seconds?: number;
+  openai_codex_ticket_reharvest_after_seconds?: number;
+  openai_codex_ticket_cookie_enabled?: boolean;
+  upstream_model_not_found_cooldown_seconds?: number;
   openai_codex_ticket_harvest_proxy_url?: string;
   // codex_cli_only 加固
   min_codex_version?: string;

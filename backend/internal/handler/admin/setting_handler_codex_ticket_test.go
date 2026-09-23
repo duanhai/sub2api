@@ -156,3 +156,48 @@ func TestSettingsCodexTicketFallbackWriteReadValidate(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketFallbackEnabled])
 }
+
+func TestSettingsCodexTicketFreshnessAndCooldownWriteReadValidate(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	get := func() string {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/admin/settings", nil)
+		h.GetSettings(c)
+		return rec.Body.String()
+	}
+	body := get()
+	require.Contains(t, body, `"openai_codex_ticket_ttl_seconds":3600`)
+	require.Contains(t, body, `"openai_codex_ticket_reharvest_after_seconds":0`)
+	require.Contains(t, body, `"openai_codex_ticket_cookie_enabled":true`)
+	require.Contains(t, body, `"upstream_model_not_found_cooldown_seconds":1800`)
+
+	rec := doUpdateSettings(t, h, map[string]any{
+		"openai_codex_ticket_ttl_seconds":             300,
+		"openai_codex_ticket_reharvest_after_seconds": 45,
+		"openai_codex_ticket_cookie_enabled":          false,
+		"upstream_model_not_found_cooldown_seconds":   0,
+	}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "300", repo.values[service.SettingKeyOpenAICodexTicketTTLSeconds])
+	require.Equal(t, "45", repo.values[service.SettingKeyOpenAICodexTicketReharvestAfterSeconds])
+	require.Equal(t, "false", repo.values[service.SettingKeyOpenAICodexTicketCookieEnabled])
+	require.Equal(t, "0", repo.values[service.SettingKeyUpstreamModelNotFoundCooldownSeconds])
+	require.Equal(t, 0, h.settingService.GetUpstreamModelNotFoundCooldownSeconds(context.Background(), 1800))
+	require.Equal(t, 300, h.settingService.GetOpenAICodexTicketTTLSeconds(context.Background(), 3600))
+
+	for _, bad := range []map[string]any{
+		{"openai_codex_ticket_ttl_seconds": 10},
+		{"openai_codex_ticket_reharvest_after_seconds": 5},
+		{"upstream_model_not_found_cooldown_seconds": -1},
+	} {
+		rec = doUpdateSettings(t, h, bad, nil)
+		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	}
+	require.Equal(t, "300", repo.values[service.SettingKeyOpenAICodexTicketTTLSeconds])
+
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "updated"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "45", repo.values[service.SettingKeyOpenAICodexTicketReharvestAfterSeconds])
+	require.Equal(t, "0", repo.values[service.SettingKeyUpstreamModelNotFoundCooldownSeconds])
+}

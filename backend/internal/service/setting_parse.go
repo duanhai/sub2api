@@ -934,6 +934,29 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		result.OpenAICodexTicketFallbackEnabled = true
 	}
 	result.OpenAICodexTicketFallbackModels = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketFallbackModels])
+	// 门票新鲜度：TTL / 持续打票间隔后台优先，缺失回退 yaml；Cookie 复用默认开。
+	result.OpenAICodexTicketTTLSeconds = openAICodexTicketDefaultTTLSeconds
+	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.TTLSeconds > 0 {
+		result.OpenAICodexTicketTTLSeconds = s.cfg.Gateway.OpenAICodexTicket.TTLSeconds
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketTTLSeconds])); err == nil && ValidateOpenAICodexTicketTTLSeconds(n) == nil {
+		result.OpenAICodexTicketTTLSeconds = n
+	}
+	if s != nil && s.cfg != nil {
+		result.OpenAICodexTicketReharvestAfterSeconds = s.cfg.Gateway.OpenAICodexTicket.ReharvestAfterSeconds
+	}
+	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketReharvestAfterSeconds])); err == nil && ValidateOpenAICodexTicketReharvestAfterSeconds(n) == nil {
+		result.OpenAICodexTicketReharvestAfterSeconds = n
+	}
+	if v, ok := settings[SettingKeyOpenAICodexTicketCookieEnabled]; ok && v != "" {
+		result.OpenAICodexTicketCookieEnabled = v == "true"
+	} else {
+		result.OpenAICodexTicketCookieEnabled = true
+	}
+	result.UpstreamModelNotFoundCooldownSeconds = int(upstreamModelNotFoundCooldown.Seconds())
+	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyUpstreamModelNotFoundCooldownSeconds])); err == nil && ValidateUpstreamModelNotFoundCooldownSeconds(n) == nil {
+		result.UpstreamModelNotFoundCooldownSeconds = n
+	}
 	if result.OpenAICodexTicketFallbackModels == "" && s != nil && s.cfg != nil {
 		result.OpenAICodexTicketFallbackModels = FormatOpenAICodexTicketFallbackModels(s.cfg.Gateway.OpenAICodexTicket.FallbackModels)
 	}

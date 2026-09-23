@@ -865,6 +865,30 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("submits ticket freshness and model-not-found cooldown settings", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_codex_ticket_ttl_seconds: 3600,
+      openai_codex_ticket_reharvest_after_seconds: 0,
+      openai_codex_ticket_cookie_enabled: true,
+      upstream_model_not_found_cooldown_seconds: 1800,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get("#codex-ticket-ttl").setValue("300");
+    await wrapper.get("#codex-ticket-reharvest").setValue("45");
+    await wrapper.get("#codex-ticket-cookie").setValue(false);
+    await wrapper.get("#model-not-found-cooldown").setValue("0");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload.openai_codex_ticket_ttl_seconds).toBe(300);
+    expect(payload.openai_codex_ticket_reharvest_after_seconds).toBe(45);
+    expect(payload.openai_codex_ticket_cookie_enabled).toBe(false);
+    expect(payload.upstream_model_not_found_cooldown_seconds).toBe(0);
+    wrapper.unmount();
+  });
+
   it("submits the Codex ticket target length as an integer", async () => {
     getSettings.mockResolvedValueOnce({
       ...baseSettingsResponse,

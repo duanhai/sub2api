@@ -614,6 +614,18 @@ export default {
         codexTicketFallbackModelsDesc:
           "One from=to per line. Leave blank to use the yaml default (gpt-6-astra=gpt-5.6-sol). A fallback model is never mapped again.",
         codexTicketFallbackModelsPlaceholder: "gpt-6-astra=gpt-5.6-sol",
+        codexTicketTTL: "Ticket lifetime (seconds)",
+        codexTicketTTLDesc:
+          "How long a newly harvested ticket is considered usable (default 3600). Production has shown injected tickets going bad after about 20 minutes, so a shorter lifetime combined with continuous harvesting keeps tickets fresh. Range 60 to 86400; applies to tickets harvested afterwards.",
+        codexTicketReharvest: "Continuous harvest interval (seconds)",
+        codexTicketReharvestDesc:
+          "When above 0, keep harvesting the next ticket N to 2N seconds (randomized) after each capture and always use the newest one. The current ticket stays in use until a new one arrives. 0 disables it and renews only near expiry. Increases probe volume; 429 responses trigger automatic backoff. Allowed 0 or 10 to 3600.",
+        codexTicketCookie: "Reuse cookies with tickets",
+        codexTicketCookieDesc:
+          "When on, cookies set by the upstream during harvesting are stored with the ticket and sent together with it. They live in the same protected field and are never exported or returned to the browser. On by default.",
+        modelNotFoundCooldown: "Model-not-found cooldown (seconds)",
+        modelNotFoundCooldownDesc:
+          "How long an account stops being scheduled for a model after the upstream returns 404 model not found (default 1800). New models often flap during rollout, and with a single account clients see 429 for the whole cooldown. Set 0 to disable the cooldown and return the upstream 404 as is. Applies to all platforms.",
         codexTicketTargetLength: "Ticket target length",
         codexTicketTargetLengthDesc:
           "Only x-codex-turn-state values of exactly this length are stored and injected (default 292). The upstream mint format drifts; many probe misses with HTTP 200 and a different len are the signal. Changes apply within seconds without a restart. Setting it to the currently common length means nearly every probed ticket gets injected, so confirm such tickets are harmless first. Allowed range 64 to 4096.",

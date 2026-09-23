@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"maps"
 	"net/http"
 	"net/url"
@@ -41,7 +42,42 @@ const (
 	openAICodexTicketMaxProbeIntervalSeconds     = 600
 	// 429 退避：按账号累计连续 429 次数，退避 = 探测周期 × 2^(n-1)，上限 5 分钟。
 	openAICodexTicketBackoffMax = 5 * time.Minute
+	// 门票新鲜度。
+	openAICodexTicketDefaultTTLSeconds  = 3600
+	openAICodexTicketMinTTLSeconds      = 60
+	openAICodexTicketMaxTTLSeconds      = 86400
+	openAICodexTicketMinReharvestAfter  = 10
+	openAICodexTicketMaxReharvestAfter  = 3600
+	openAICodexTicketCookieMaxBytes     = 8 << 10
+	upstreamModelNotFoundMaxCooldownSec = 86400
 )
+
+// ValidateOpenAICodexTicketTTLSeconds 校验后台提交的新票有效期。
+func ValidateOpenAICodexTicketTTLSeconds(n int) error {
+	if n < openAICodexTicketMinTTLSeconds || n > openAICodexTicketMaxTTLSeconds {
+		return fmt.Errorf("codex ticket ttl must be between %d and %d seconds", openAICodexTicketMinTTLSeconds, openAICodexTicketMaxTTLSeconds)
+	}
+	return nil
+}
+
+// ValidateOpenAICodexTicketReharvestAfterSeconds 校验持续打票间隔（0 关闭）。
+func ValidateOpenAICodexTicketReharvestAfterSeconds(n int) error {
+	if n == 0 {
+		return nil
+	}
+	if n < openAICodexTicketMinReharvestAfter || n > openAICodexTicketMaxReharvestAfter {
+		return fmt.Errorf("codex ticket reharvest interval must be 0 or between %d and %d seconds", openAICodexTicketMinReharvestAfter, openAICodexTicketMaxReharvestAfter)
+	}
+	return nil
+}
+
+// ValidateUpstreamModelNotFoundCooldownSeconds 校验「模型不存在」冷却秒数（0 表示不冷却）。
+func ValidateUpstreamModelNotFoundCooldownSeconds(n int) error {
+	if n < 0 || n > upstreamModelNotFoundMaxCooldownSec {
+		return fmt.Errorf("model-not-found cooldown must be between 0 and %d seconds", upstreamModelNotFoundMaxCooldownSec)
+	}
+	return nil
+}
 
 // ValidateOpenAICodexTicketHarvestProbeInterval 校验后台提交的探测周期（秒）。
 func ValidateOpenAICodexTicketHarvestProbeInterval(n int) error {
@@ -112,6 +148,9 @@ type openAICodexTicket struct {
 	CapturedAt time.Time `json:"captured_at"`
 	ExpiresAt  time.Time `json:"expires_at"`
 	Attempts   int       `json:"attempts"`
+	// Cookie 是打票成功时上游 Set-Cookie 归一化后的 "name=value; ..."，注入票时一并带上。
+	// 与票同存于 accounts.extra 的受保护键下，不随账号导出或返回前端。
+	Cookie string `json:"cookie,omitempty"`
 }
 
 func openAICodexTicketKey(accountID int64, model string) string {
@@ -140,6 +179,8 @@ func (s *OpenAIGatewayService) openAICodexTicketConfig() config.OpenAICodexTicke
 	if s != nil && s.settingService != nil {
 		cfg.TargetLength = s.settingService.GetOpenAICodexTicketTargetLength(context.Background(), cfg.TargetLength)
 		cfg.HarvestProbeIntervalSeconds = s.settingService.GetOpenAICodexTicketHarvestProbeIntervalSeconds(context.Background(), cfg.HarvestProbeIntervalSeconds)
+		cfg.TTLSeconds = s.settingService.GetOpenAICodexTicketTTLSeconds(context.Background(), cfg.TTLSeconds)
+		cfg.ReharvestAfterSeconds = s.settingService.GetOpenAICodexTicketReharvestAfterSeconds(context.Background(), cfg.ReharvestAfterSeconds)
 	}
 	if cfg.TargetLength <= 0 {
 		cfg.TargetLength = openAICodexTicketDefaultTargetLength
@@ -291,6 +332,69 @@ func (t *openAICodexTicket) needsRefresh(now time.Time, refreshBefore time.Durat
 	return !t.ExpiresAt.After(now.Add(refreshBefore))
 }
 
+// reharvestDue 在「持续打票」开启时判断是否该打下一张：票捕获后经过 [after, 2*after)
+// 的确定性抖动时刻即到期（同一张票只算出一个时刻，多实例一致，避免同时起跳）。
+// 旧票在新票到手前继续使用；打不到时旧票照常用到 TTL。
+func (t *openAICodexTicket) reharvestDue(now time.Time, after time.Duration) bool {
+	if t == nil || after <= 0 || t.CapturedAt.IsZero() {
+		return false
+	}
+	h := fnv.New64a()
+	_, _ = fmt.Fprintf(h, "%d\x00%s\x00%d", t.AccountID, t.Model, t.CapturedAt.UnixNano())
+	jitter := time.Duration(h.Sum64() % uint64(after))
+	return !now.Before(t.CapturedAt.Add(after + jitter))
+}
+
+func (s *OpenAIGatewayService) openAICodexTicketCookieEnabledContext(ctx context.Context) bool {
+	if s == nil {
+		return false
+	}
+	if s.settingService != nil {
+		return s.settingService.GetOpenAICodexTicketCookieEnabled(ctx, true)
+	}
+	return true
+}
+
+// extractOpenAICodexResponseCookies 把上游 Set-Cookie 归一化为 Cookie 请求头形态：
+// 只保留 name=value、丢弃属性，同名取首个，总长受限。
+func extractOpenAICodexResponseCookies(h http.Header) string {
+	if h == nil || len(h.Values("Set-Cookie")) == 0 {
+		return ""
+	}
+	seen := map[string]bool{}
+	parts := make([]string, 0, len(h.Values("Set-Cookie")))
+	size := 0
+	for _, ck := range (&http.Response{Header: h}).Cookies() {
+		if ck == nil || ck.Name == "" || seen[ck.Name] {
+			continue
+		}
+		pair := ck.Name + "=" + ck.Value
+		if size+len(pair)+2 > openAICodexTicketCookieMaxBytes {
+			break
+		}
+		seen[ck.Name] = true
+		parts = append(parts, pair)
+		size += len(pair) + 2
+	}
+	return strings.Join(parts, "; ")
+}
+
+// applyOpenAICodexTicketCookie 把随票保存的 Cookie 追加到出站请求（客户端 Cookie 本就不透传）。
+func applyOpenAICodexTicketCookie(h http.Header, ticket *openAICodexTicket) {
+	if h == nil || ticket == nil {
+		return
+	}
+	cookie := strings.TrimSpace(ticket.Cookie)
+	if cookie == "" {
+		return
+	}
+	if existing := strings.TrimSpace(h.Get("Cookie")); existing != "" {
+		h.Set("Cookie", existing+"; "+cookie)
+		return
+	}
+	h.Set("Cookie", cookie)
+}
+
 func (s *OpenAIGatewayService) lookupOpenAICodexTicket(account *Account, model string) *openAICodexTicket {
 	if s == nil || account == nil || account.ID <= 0 {
 		return nil
@@ -400,6 +504,9 @@ func (s *OpenAIGatewayService) injectOpenAICodexTicket(ctx context.Context, acco
 	ticket := s.lookupOpenAICodexTicket(account, model)
 	if ticket.valid(time.Now(), cfg.TargetLength) {
 		h.Set(openAICodexTurnStateHeader, ticket.State)
+		if s.openAICodexTicketCookieEnabledContext(ctx) {
+			applyOpenAICodexTicketCookie(h, ticket)
+		}
 		return ticket, nil
 	}
 	if !s.openAICodexTicketFailClosedContext(ctx) {
@@ -785,13 +892,19 @@ func (s *OpenAIGatewayService) openAICodexTicketBlocksAccount(account *Account, 
 }
 
 func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, account *Account, token, model, proxyURL string, attemptTimeout time.Duration) (state string, status int, err error) {
+	state, _, status, err = s.fireOpenAICodexTicketProbeWithCookie(ctx, account, token, model, proxyURL, attemptTimeout)
+	return state, status, err
+}
+
+// fireOpenAICodexTicketProbeWithCookie 同 fireOpenAICodexTicketProbe，额外返回上游下发的 Cookie。
+func (s *OpenAIGatewayService) fireOpenAICodexTicketProbeWithCookie(ctx context.Context, account *Account, token, model, proxyURL string, attemptTimeout time.Duration) (state string, cookie string, status int, err error) {
 	attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
 	defer cancel()
 
 	body := []byte(`{"model":` + jsonString(model) + `,"store":false,"stream":true,"instructions":"Reply with exactly: pong","input":[{"role":"user","content":[{"type":"input_text","text":"ping"}]}]}`)
 	req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, chatgptCodexURL, bytes.NewReader(body))
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	req = req.WithContext(WithHTTPUpstreamProfile(req.Context(), HTTPUpstreamProfileOpenAIHarvest))
 	req.Close = true
@@ -802,7 +915,7 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	req.Header.Set("session_id", uuid.NewString())
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(attemptCtx, s.accountRepo, req.Header, account); err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	applyOpenAICodexTicketHarvestIdentity(req.Header, model)
 
@@ -811,10 +924,10 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 	// while handlers are still wiring it during gateway construction.
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {
-		return "", 0, err
+		return "", "", 0, err
 	}
 	if resp == nil {
-		return "", 0, errors.New("nil upstream response")
+		return "", "", 0, errors.New("nil upstream response")
 	}
 	// Only the response header is needed; no connection will be reused.
 	defer func() {
@@ -822,7 +935,7 @@ func (s *OpenAIGatewayService) fireOpenAICodexTicketProbe(ctx context.Context, a
 			_ = resp.Body.Close()
 		}
 	}()
-	return extractOpenAICodexTurnState(resp.Header), resp.StatusCode, nil
+	return extractOpenAICodexTurnState(resp.Header), extractOpenAICodexResponseCookies(resp.Header), resp.StatusCode, nil
 }
 
 func jsonString(v string) string {
@@ -919,6 +1032,7 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 	cfg := s.openAICodexTicketConfig()
 	now := time.Now()
 	refreshBefore := time.Duration(cfg.RefreshBeforeSeconds) * time.Second
+	reharvestAfter := time.Duration(cfg.ReharvestAfterSeconds) * time.Second
 	var wg sync.WaitGroup
 	probed := 0
 	for i := range accounts {
@@ -939,8 +1053,8 @@ func (s *OpenAIGatewayService) refreshOpenAICodexTickets(ctx context.Context) {
 			if model == "" {
 				continue
 			}
-			// 已有一张有效且未临近过期的票 → 本周期不打，省得白刷。
-			if t := s.lookupOpenAICodexTicket(&account, model); t.valid(now, cfg.TargetLength) && !t.needsRefresh(now, refreshBefore) {
+			// 已有一张有效且未临近过期的票 → 本周期不打；开了持续打票且到点了则继续打新票。
+			if t := s.lookupOpenAICodexTicket(&account, model); t.valid(now, cfg.TargetLength) && !t.needsRefresh(now, refreshBefore) && !t.reharvestDue(now, reharvestAfter) {
 				continue
 			}
 			acc := account
@@ -985,7 +1099,7 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 				zap.String("reason", "token"), zap.Error(err))
 			return nil, nil
 		}
-		state, status, perr := s.fireOpenAICodexTicketProbe(ctx, account, token, model, proxyURL, time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
+		state, cookie, status, perr := s.fireOpenAICodexTicketProbeWithCookie(ctx, account, token, model, proxyURL, time.Duration(cfg.HarvestAttemptTimeoutSeconds)*time.Second)
 		if perr != nil {
 			logger.L().Info("openai_codex_ticket probe miss",
 				zap.Int64("account_id", account.ID), zap.String("model", model),
@@ -1016,11 +1130,13 @@ func (s *OpenAIGatewayService) probeOnceOpenAICodexTicket(ctx context.Context, a
 			CapturedAt: now,
 			ExpiresAt:  now.Add(time.Duration(cfg.TTLSeconds) * time.Second),
 			Attempts:   1,
+			Cookie:     cookie,
 		}
 		s.storeOpenAICodexTicket(ctx, account, ticket)
 		logger.L().Info("openai_codex_ticket harvested",
 			zap.Int64("account_id", account.ID), zap.String("model", model),
-			zap.Int("length", ticket.Length), zap.String("mode", "continuous"))
+			zap.Int("length", ticket.Length), zap.String("mode", "continuous"),
+			zap.Int("ttl_seconds", cfg.TTLSeconds), zap.Int("cookie_count", len(strings.FieldsFunc(cookie, func(r rune) bool { return r == ';' }))))
 		return nil, nil
 	})
 }

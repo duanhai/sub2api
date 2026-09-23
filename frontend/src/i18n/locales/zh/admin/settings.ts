@@ -607,6 +607,18 @@ export default {
         codexTicketFallbackModelsDesc:
           '每行一条 from=to。留空表示使用 yaml 默认（gpt-6-astra=gpt-5.6-sol）。兜底模型自身不会再被映射。',
         codexTicketFallbackModelsPlaceholder: 'gpt-6-astra=gpt-5.6-sol',
+        codexTicketTTL: '门票有效期（秒）',
+        codexTicketTTLDesc:
+          '新打到的票被视为可用的时长，默认 3600。生产上观察到票注入后约 20 分钟就可能被上游判坏，可缩短并配合「持续打票」保持新鲜。允许 60 到 86400，只影响之后打到的票。',
+        codexTicketReharvest: '持续打票间隔（秒）',
+        codexTicketReharvestDesc:
+          '大于 0 时，拿到票后隔 N 到 2N 秒（随机）继续打下一张，始终用最新的票；新票到手前旧票照常使用，打不到也不影响旧票。0 表示关闭，只在临近过期时续票。会增加探测量，出现 429 会自动退避。允许 0 或 10 到 3600。',
+        codexTicketCookie: '随票复用 Cookie',
+        codexTicketCookieDesc:
+          '开启后，打票时保存上游下发的 Cookie，注入这张票时一并带上。Cookie 与票同存于受保护字段，不会随账号导出或返回前端。默认开启。',
+        modelNotFoundCooldown: '「模型不存在」冷却（秒）',
+        modelNotFoundCooldownDesc:
+          '上游对某个模型返回 404「模型不存在」时，该账号的这个模型暂停调度的时长，默认 1800。新模型灰度期上游常抖动，单账号时冷却期内客户端会看到 429。设为 0 表示不冷却，原样把 404 返回客户端。对所有平台生效。',
         codexTicketTargetLength: '门票目标长度',
         codexTicketTargetLengthDesc:
           '只接受并注入长度恰好等于此值的 x-codex-turn-state，默认 292。上游铸票格式会漂移（探测日志里出现大量 http 200 但 len 为其他值即为信号），可在此调整，保存后 5 秒内生效、无需重启。改成当前常见长度意味着探测到的票几乎都会被注入，请先确认这类票对业务无副作用。允许范围 64 到 4096。',

@@ -224,6 +224,10 @@ type SystemSettings struct {
 	OpenAICodexTicketWatchdogEnabled             bool   `json:"openai_codex_ticket_watchdog_enabled"`
 	OpenAICodexTicketFallbackEnabled             bool   `json:"openai_codex_ticket_fallback_enabled"`
 	OpenAICodexTicketFallbackModels              string `json:"openai_codex_ticket_fallback_models"`
+	OpenAICodexTicketTTLSeconds                  int    `json:"openai_codex_ticket_ttl_seconds"`
+	OpenAICodexTicketReharvestAfterSeconds       int    `json:"openai_codex_ticket_reharvest_after_seconds"`
+	OpenAICodexTicketCookieEnabled               bool   `json:"openai_codex_ticket_cookie_enabled"`
+	UpstreamModelNotFoundCooldownSeconds         int    `json:"upstream_model_not_found_cooldown_seconds"`
 	OpenAICodexTicketHarvestProxyURL             string `json:"openai_codex_ticket_harvest_proxy_url"`
 	OpenAICodexTicketHarvestProxyConfigured      bool   `json:"openai_codex_ticket_harvest_proxy_configured"`
 

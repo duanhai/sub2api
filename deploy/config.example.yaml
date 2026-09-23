@@ -347,7 +347,14 @@ gateway:
     # mint format can drift (production once saw mostly 312); adjust in the Admin UI without a restart.
     # 只接受并注入长度恰好等于该值的票；上游铸票格式会漂移（生产曾长期只见 312），可在后台热改。
     target_length: 292
+    # Hot-adjustable in the Admin UI. Production shows injected tickets going bad after ~20 min,
+    # so a short TTL plus reharvest_after_seconds keeps the freshest ticket in use.
+    # 后台可热改。生产观察到票注入后约 20 分钟即被判坏，建议缩短并配合 reharvest_after_seconds。
     ttl_seconds: 3600
+    # >0: after capturing a ticket, keep harvesting the next one after [N, 2N) seconds and always
+    # use the newest. 0 disables (renew only near expiry).
+    # >0：拿到票后隔 [N, 2N) 秒继续打下一张，始终用最新的票；0 关闭。
+    reharvest_after_seconds: 0
     refresh_before_seconds: 600
     # 后台「系统设置 → 网关 → Codex 设置」可覆盖此值，无需重启。
     # 后台值的读取缓存为 5 秒，下个探测周期使用新代理；代理服务商自行负责轮换 IP。
