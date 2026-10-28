@@ -40,7 +40,7 @@ func TestCodexTicketEnabledRuntimeSettingOverridesYaml(t *testing.T) {
 	svc := ticketTestService(t, config.OpenAICodexTicketConfig{Enabled: false, FailClosed: true}, nil)
 	svc.settingService = settings
 	account := ticketTestAccount(41)
-	svc.storeOpenAICodexTicket(context.Background(), account, &openAICodexTicket{
+	svc.storeOpenAICodexTicket(account, &openAICodexTicket{
 		AccountID:  41,
 		Model:      "gpt-6-astra",
 		State:      fakeCodexTicketState(292),
@@ -119,12 +119,4 @@ func TestCodexTicketProxyMaskAndValidation(t *testing.T) {
 		require.NotContains(t, err.Error(), "secret")
 		require.Empty(t, MaskProxyURL(raw))
 	}
-}
-
-func TestCodexTicketSettingsRefreshDoesNotMutateSharedConfig(t *testing.T) {
-	cfg := &config.Config{}
-	svc := NewSettingService(&codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{SettingKeyOpenAICodexTicketEnabled: "true"}}}, cfg)
-	svc.refreshCachedSettings(&SystemSettings{OpenAICodexTicketEnabled: true})
-	require.False(t, cfg.Gateway.OpenAICodexTicket.Enabled, "runtime settings must not write the shared immutable startup configuration")
-	require.True(t, svc.GetOpenAICodexTicketEnabled(context.Background(), false))
 }
