@@ -710,18 +710,8 @@ const (
 	SettingKeyOpenAICodexClientVersionSynced = "openai_codex_client_version_synced"
 	// SettingKeyOpenAICodexVersionAutoSyncEnabled 是否启用 Codex 客户端版本号自动同步（默认 true）。
 	SettingKeyOpenAICodexVersionAutoSyncEnabled = "openai_codex_version_auto_sync_enabled"
-	// SettingKeyOpenAICodexTicketHarvestProxyURL Codex 292 打票出口（socks5h/http），后台可改、热更新。
-	SettingKeyOpenAICodexTicketHarvestProxyURL = "openai_codex_ticket_harvest_proxy_url"
-	// SettingKeyOpenAICodexTicketFailClosed Codex 292 缺票拦截（后台可改、热更新）。
-	// 关闭（默认）：无有效门票时不注入、不拦截，按客户端原样转发，由上游决定。
-	// 开启：无有效门票的账号对门控模型暂停调度；出站前仍无票则该请求直接失败。
-	SettingKeyOpenAICodexTicketFailClosed = "openai_codex_ticket_fail_closed"
-	// SettingKeyOpenAICodexTicketTargetLength Codex 292 门票目标长度（后台可改、热更新）。
-	// 只接受并注入长度恰好等于该值的 x-codex-turn-state；缺失/非法回退 yaml（默认 292）。
-	SettingKeyOpenAICodexTicketTargetLength = "openai_codex_ticket_target_length"
-	// SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds 打票探测周期（秒，后台可改、热更新）。
-	// 缺失/非法回退 yaml（默认 6）。探测本身会叠加到账号请求频率上，过密会招来上游 429。
-	SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds = "openai_codex_ticket_harvest_probe_interval_seconds"
+	// SettingKeyUpstreamModelNotFoundCooldownSeconds 上游 404「模型不存在」时对 (账号, 模型) 的冷却秒数。
+	SettingKeyUpstreamModelNotFoundCooldownSeconds = "upstream_model_not_found_cooldown_seconds"
 	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。
 	// 空值表示跟随自动同步值；自动同步也没有结果时回退到 claude.CLIVersion()（环境变量覆盖 + 内置基线）。
 	// 版本太旧会被 Anthropic 拒绝（claude_code_version_too_old），故该值需保持跟随官方发布。

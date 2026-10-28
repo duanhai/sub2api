@@ -904,6 +904,7 @@ func TestAPIContracts(t *testing.T) {
 					"codex_cli_only_blacklist": "",
 					"codex_cli_only_whitelist": "",
 					"compact_home_enabled": false,
+					"upstream_model_not_found_cooldown_seconds": 1800,
 					"codex_cli_only_allow_app_server_clients": false,
 					"codex_cli_only_engine_fingerprint_signals": "[{\"type\":\"header_prefix\",\"match\":[\"x-codex-\"],\"required\":true},{\"type\":\"header_exact\",\"match\":[\"session-id\",\"session_id\"],\"required\":false},{\"type\":\"header_exact\",\"match\":[\"thread-id\",\"thread_id\"],\"required\":false},{\"type\":\"body_path\",\"match\":[\"client_metadata.x-codex-window-id\",\"client_metadata.x-codex-installation-id\"],\"required\":false}]",
 					"allow_ungrouped_key_scheduling": false,

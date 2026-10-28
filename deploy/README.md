@@ -2,6 +2,10 @@
 
 This directory contains files for deploying Sub2API on Linux servers and Apple-silicon Macs.
 
+## Removed Fork Feature: Codex 292 Tickets
+
+The fork's background ticket harvesting, injection, watchdog, ticket-based scheduling and fallback model rewriting have been removed. Remove the retired `gateway.openai_codex_ticket` YAML block and related environment overrides from existing installations. The admin ticket controls and account ticket summaries are no longer available. Normal Codex turn-state forwarding and the independent `upstream_model_not_found_cooldown_seconds` setting remain supported. Previously stored ticket and harvest-proxy secrets remain redacted from account responses and exports; this change does not delete production data.
+
 ## Deployment Methods
 
 | Method | Best For | Setup Wizard |

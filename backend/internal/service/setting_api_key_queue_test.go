@@ -12,7 +12,7 @@ import (
 
 func TestAPIKeyQueuePanelPolicyAndWSConnectionSnapshot(t *testing.T) {
 	ctx := context.Background()
-	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
+	repo := &runtimeSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
 	settings := NewSettingService(repo, nil)
 	svc := NewConcurrencyService(nil)
 	svc.SetAPIKeyQueueSettings(settings)

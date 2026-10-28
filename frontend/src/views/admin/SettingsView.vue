@@ -4506,6 +4506,23 @@
             <div class="p-6 space-y-4">
                 <div>
                   <h3 class="text-base font-semibold text-gray-900 dark:text-white">
+                    {{ t("admin.settings.gatewayForwarding.modelNotFoundCooldown") }}
+                  </h3>
+                  <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.gatewayForwarding.modelNotFoundCooldownDesc") }}
+                  </p>
+                  <input
+                    id="model-not-found-cooldown"
+                    v-model.number="form.upstream_model_not_found_cooldown_seconds"
+                    type="number"
+                    min="0"
+                    max="86400"
+                    step="1"
+                    class="input mt-3 w-40 font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <h3 class="text-base font-semibold text-gray-900 dark:text-white">
                     {{ t("admin.settings.gatewayForwarding.codexClientRestrictionTitle") }}
                   </h3>
                   <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -10112,15 +10129,11 @@ const form = reactive<SettingsForm>({
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   openai_codex_client_version_synced: "",
   openai_codex_version_auto_sync_enabled: true,
-<<<<<<< HEAD
-  openai_codex_ticket_harvest_proxy_url: "",
-  openai_codex_ticket_harvest_proxy_configured: false,
+  upstream_model_not_found_cooldown_seconds: 1800,
   claude_code_client_version: "",
   // 只读展示：自动同步任务写入的官方最新稳定版，不参与提交（提交载荷按字段显式构造）
   claude_code_client_version_synced: "",
   claude_code_version_auto_sync_enabled: true,
-=======
->>>>>>> parent of d14054afc (feat(openai): add live harvest proxy settings and protect ticket state)
   // codex_cli_only 加固
   min_codex_version: "",
   max_codex_version: "",
@@ -11749,14 +11762,14 @@ async function saveSettings() {
         form.openai_codex_client_version?.trim() || "",
       openai_codex_version_auto_sync_enabled:
         form.openai_codex_version_auto_sync_enabled,
-<<<<<<< HEAD
-      openai_codex_ticket_harvest_proxy_url:
-        form.openai_codex_ticket_harvest_proxy_url?.trim() || "",
+      upstream_model_not_found_cooldown_seconds: Number.isFinite(
+        Number(form.upstream_model_not_found_cooldown_seconds),
+      )
+        ? Math.max(0, Math.floor(Number(form.upstream_model_not_found_cooldown_seconds)))
+        : 1800,
       claude_code_client_version: form.claude_code_client_version?.trim() || "",
       claude_code_version_auto_sync_enabled:
         form.claude_code_version_auto_sync_enabled,
-=======
->>>>>>> parent of d14054afc (feat(openai): add live harvest proxy settings and protect ticket state)
       min_codex_version: form.min_codex_version?.trim() || "",
       max_codex_version: form.max_codex_version?.trim() || "",
       codex_cli_only_allow_app_server_clients:

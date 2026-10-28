@@ -828,6 +828,23 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("removes ticket controls while preserving model-not-found cooldown", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      upstream_model_not_found_cooldown_seconds: 1800,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.find('[id^="codex-ticket-"]').exists()).toBe(false);
+    await wrapper.get("#model-not-found-cooldown").setValue("0");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    const payload = updateSettings.mock.calls[0]?.[0];
+    expect(payload.upstream_model_not_found_cooldown_seconds).toBe(0);
+    expect(Object.keys(payload).some((key) => key.startsWith("openai_codex_ticket_"))).toBe(false);
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();
