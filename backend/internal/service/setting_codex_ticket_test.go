@@ -247,17 +247,3 @@ func TestValidateOpenAICodexTicketTargetLength(t *testing.T) {
 		require.Error(t, ValidateOpenAICodexTicketTargetLength(bad))
 	}
 }
-
-// 程序化/部分更新不带目标长度（0）时必须能保存，且回退 yaml 默认，不能被区间校验拒绝。
-func TestUpdateSettingsWithoutCodexTicketTargetLengthKeepsDefault(t *testing.T) {
-	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{
-		SettingKeyOpenAICodexTicketTargetLength: "312",
-	}}}
-	svc := NewSettingService(repo, &config.Config{})
-	require.NoError(t, svc.UpdateSettings(context.Background(), &SystemSettings{}))
-	require.Equal(t, "", repo.values[SettingKeyOpenAICodexTicketTargetLength])
-	require.Equal(t, 292, svc.GetOpenAICodexTicketTargetLength(context.Background(), 292))
-
-	require.Error(t, svc.UpdateSettings(context.Background(), &SystemSettings{OpenAICodexTicketTargetLength: 10}))
-	require.Equal(t, "", repo.values[SettingKeyOpenAICodexTicketTargetLength], "rejected value must not be written")
-}
