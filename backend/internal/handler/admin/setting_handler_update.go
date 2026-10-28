@@ -266,10 +266,6 @@ type UpdateSettingsRequest struct {
 	OpenAICodexTicketWatchdogEnabled             *bool   `json:"openai_codex_ticket_watchdog_enabled"`
 	OpenAICodexTicketFallbackEnabled             *bool   `json:"openai_codex_ticket_fallback_enabled"`
 	OpenAICodexTicketFallbackModels              *string `json:"openai_codex_ticket_fallback_models"`
-	OpenAICodexTicketTTLSeconds                  *int    `json:"openai_codex_ticket_ttl_seconds"`
-	OpenAICodexTicketReharvestAfterSeconds       *int    `json:"openai_codex_ticket_reharvest_after_seconds"`
-	OpenAICodexTicketCookieEnabled               *bool   `json:"openai_codex_ticket_cookie_enabled"`
-	UpstreamModelNotFoundCooldownSeconds         *int    `json:"upstream_model_not_found_cooldown_seconds"`
 	OpenAICodexTicketHarvestProxyURL             string  `json:"openai_codex_ticket_harvest_proxy_url"`
 
 	// codex_cli_only 加固（global-only）
@@ -1833,30 +1829,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketFallbackModels
 		}(),
-		OpenAICodexTicketTTLSeconds: func() int {
-			if req.OpenAICodexTicketTTLSeconds != nil {
-				return *req.OpenAICodexTicketTTLSeconds
-			}
-			return previousSettings.OpenAICodexTicketTTLSeconds
-		}(),
-		OpenAICodexTicketReharvestAfterSeconds: func() int {
-			if req.OpenAICodexTicketReharvestAfterSeconds != nil {
-				return *req.OpenAICodexTicketReharvestAfterSeconds
-			}
-			return previousSettings.OpenAICodexTicketReharvestAfterSeconds
-		}(),
-		OpenAICodexTicketCookieEnabled: func() bool {
-			if req.OpenAICodexTicketCookieEnabled != nil {
-				return *req.OpenAICodexTicketCookieEnabled
-			}
-			return previousSettings.OpenAICodexTicketCookieEnabled
-		}(),
-		UpstreamModelNotFoundCooldownSeconds: func() int {
-			if req.UpstreamModelNotFoundCooldownSeconds != nil {
-				return *req.UpstreamModelNotFoundCooldownSeconds
-			}
-			return previousSettings.UpstreamModelNotFoundCooldownSeconds
-		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2428,10 +2400,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexTicketWatchdogEnabled:                       updatedSettings.OpenAICodexTicketWatchdogEnabled,
 		OpenAICodexTicketFallbackEnabled:                       updatedSettings.OpenAICodexTicketFallbackEnabled,
 		OpenAICodexTicketFallbackModels:                        updatedSettings.OpenAICodexTicketFallbackModels,
-		OpenAICodexTicketTTLSeconds:                            updatedSettings.OpenAICodexTicketTTLSeconds,
-		OpenAICodexTicketReharvestAfterSeconds:                 updatedSettings.OpenAICodexTicketReharvestAfterSeconds,
-		OpenAICodexTicketCookieEnabled:                         updatedSettings.OpenAICodexTicketCookieEnabled,
-		UpstreamModelNotFoundCooldownSeconds:                   updatedSettings.UpstreamModelNotFoundCooldownSeconds,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,

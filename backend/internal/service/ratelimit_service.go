@@ -2474,15 +2474,6 @@ const upstreamCodexPlanGatedModelReason = "upstream_400_codex_plan_gated_model"
 const tempUnschedBodyMaxBytes = 64 << 10
 const tempUnschedMessageMaxBytes = 2048
 
-// upstreamModelNotFoundCooldown 返回「模型不存在」冷却时长：后台热设置优先，缺失回退 30 分钟。
-func (s *RateLimitService) upstreamModelNotFoundCooldown(ctx context.Context) time.Duration {
-	fallback := int(upstreamModelNotFoundCooldown / time.Second)
-	if s == nil || s.settingService == nil {
-		return upstreamModelNotFoundCooldown
-	}
-	return time.Duration(s.settingService.GetUpstreamModelNotFoundCooldownSeconds(ctx, fallback)) * time.Second
-}
-
 // HandleUpstreamModelNotFound marks the requested model as temporarily
 // unavailable on the account when the upstream deterministically reports it
 // cannot serve that model: a 404 model-not-found, or the Codex 400 rejecting a
@@ -2502,12 +2493,7 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	var reason string
 	switch {
 	case isUpstreamModelNotFoundError(statusCode, responseBody):
-		cooldown, reason = s.upstreamModelNotFoundCooldown(ctx), upstreamModelNotFoundReason
-		if cooldown <= 0 {
-			// 后台设为 0：不冷却、不 failover，原样把上游 404 返回客户端。
-			// 新模型灰度期上游常抖动，单账号池下 30 分钟冷却等于整段不可用。
-			return false
-		}
+		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
 	case statusCode == http.StatusUnauthorized && account.Type == AccountTypeAPIKey && account.IsOpenAICompatible() && isOpenAICompatibleModelNotFoundBody(responseBody):
 		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFound401Reason
 	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):

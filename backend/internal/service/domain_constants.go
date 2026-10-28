@@ -736,15 +736,6 @@ const (
 	// SettingKeyOpenAICodexTicketFallbackModels 兜底映射表，形如 "gpt-6-astra=gpt-5.6-sol"，
 	// 多条以换行或逗号分隔；空 → 回退 yaml（默认 astra → sol）。
 	SettingKeyOpenAICodexTicketFallbackModels = "openai_codex_ticket_fallback_models"
-	// SettingKeyOpenAICodexTicketTTLSeconds 新票有效期（秒，60~86400，后台热改；空回退 yaml）。
-	SettingKeyOpenAICodexTicketTTLSeconds = "openai_codex_ticket_ttl_seconds"
-	// SettingKeyOpenAICodexTicketReharvestAfterSeconds 拿到票后隔多久继续打下一张（秒，0 关闭，10~3600）。
-	SettingKeyOpenAICodexTicketReharvestAfterSeconds = "openai_codex_ticket_reharvest_after_seconds"
-	// SettingKeyOpenAICodexTicketCookieEnabled 打票时抓取上游 Set-Cookie，并在注入票时一并带上（默认开）。
-	SettingKeyOpenAICodexTicketCookieEnabled = "openai_codex_ticket_cookie_enabled"
-	// SettingKeyUpstreamModelNotFoundCooldownSeconds 上游 404「模型不存在」时对 (账号, 模型) 的冷却秒数。
-	// 空回退 1800；0 表示不冷却，原样把 404 返回客户端。
-	SettingKeyUpstreamModelNotFoundCooldownSeconds = "upstream_model_not_found_cooldown_seconds"
 	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。
 	// 空值表示跟随自动同步值；自动同步也没有结果时回退到 claude.CLIVersion()（环境变量覆盖 + 内置基线）。
 	// 版本太旧会被 Anthropic 拒绝（claude_code_version_too_old），故该值需保持跟随官方发布。
