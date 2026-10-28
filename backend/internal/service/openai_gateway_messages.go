@@ -96,10 +96,6 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 2. Model mapping
 	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
-	if fallbackModel, applied := s.applyOpenAICodexTicketFallback(ctx, c, account, upstreamModel); applied {
-		upstreamModel = fallbackModel
-		billingModel = fallbackModel
-	}
 	promptCacheKey = strings.TrimSpace(promptCacheKey)
 	apiKeyID := getAPIKeyIDFromContext(c)
 	anthropicDigestChain := ""

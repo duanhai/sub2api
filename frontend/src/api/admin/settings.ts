@@ -644,8 +644,6 @@ export interface SystemSettings {
   openai_codex_ticket_target_length: number;
   openai_codex_ticket_harvest_probe_interval_seconds: number;
   openai_codex_ticket_watchdog_enabled: boolean;
-  openai_codex_ticket_fallback_enabled: boolean;
-  openai_codex_ticket_fallback_models: string;
   openai_codex_ticket_harvest_proxy_url: string;
   openai_codex_ticket_harvest_proxy_configured: boolean;
   claude_code_client_version: string;
@@ -976,8 +974,6 @@ export interface UpdateSettingsRequest {
   openai_codex_ticket_target_length?: number;
   openai_codex_ticket_harvest_probe_interval_seconds?: number;
   openai_codex_ticket_watchdog_enabled?: boolean;
-  openai_codex_ticket_fallback_enabled?: boolean;
-  openai_codex_ticket_fallback_models?: string;
   openai_codex_ticket_harvest_proxy_url?: string;
   claude_code_client_version?: string;
   claude_code_version_auto_sync_enabled?: boolean;

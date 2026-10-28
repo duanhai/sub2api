@@ -730,12 +730,6 @@ const (
 	// 开：业务响应里上游返回模型与请求模型不符、或响应头带回 312 长度 turn-state 时，
 	// 立即作废本次注入的门票并触发一次重采。关：只记账，不动门票。
 	SettingKeyOpenAICodexTicketWatchdogEnabled = "openai_codex_ticket_watchdog_enabled"
-	// SettingKeyOpenAICodexTicketFallbackEnabled 无票兜底降级开关（后台可改、热更新，默认开）。
-	// 开：无有效门票且未开缺票拦截时，出站前把门控模型改写为兜底模型（见 FallbackModels）。
-	SettingKeyOpenAICodexTicketFallbackEnabled = "openai_codex_ticket_fallback_enabled"
-	// SettingKeyOpenAICodexTicketFallbackModels 兜底映射表，形如 "gpt-6-astra=gpt-5.6-sol"，
-	// 多条以换行或逗号分隔；空 → 回退 yaml（默认 astra → sol）。
-	SettingKeyOpenAICodexTicketFallbackModels = "openai_codex_ticket_fallback_models"
 	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。
 	// 空值表示跟随自动同步值；自动同步也没有结果时回退到 claude.CLIVersion()（环境变量覆盖 + 内置基线）。
 	// 版本太旧会被 Anthropic 拒绝（claude_code_version_too_old），故该值需保持跟随官方发布。
