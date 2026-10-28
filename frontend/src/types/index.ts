@@ -1219,13 +1219,6 @@ export interface Account {
     blocked: boolean
     expires_at?: string
   }>
-  codex_ticket_watchdog?: {
-    trigger_count: number
-    last_reason?: string
-    last_model?: string
-    last_response_model?: string
-    last_triggered_at?: string
-  }
   opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {

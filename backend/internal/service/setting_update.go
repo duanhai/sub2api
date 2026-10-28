@@ -497,7 +497,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		}
 		updates[SettingKeyOpenAICodexTicketTargetLength] = strconv.Itoa(settings.OpenAICodexTicketTargetLength)
 	}
-	updates[SettingKeyOpenAICodexTicketWatchdogEnabled] = strconv.FormatBool(settings.OpenAICodexTicketWatchdogEnabled)
 	// 同上：0 视为未指定，清空后台键回退 yaml/默认。
 	if settings.OpenAICodexTicketHarvestProbeIntervalSeconds == 0 {
 		updates[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = ""
@@ -776,7 +775,6 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	s.InvalidateOpenAICodexTicketFailClosedCache()
 	s.InvalidateOpenAICodexTicketTargetLengthCache()
 	s.InvalidateOpenAICodexTicketHarvestProbeIntervalCache()
-	s.InvalidateOpenAICodexTicketWatchdogCache()
 	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	s.InvalidateClaudeCodeClientVersionCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)

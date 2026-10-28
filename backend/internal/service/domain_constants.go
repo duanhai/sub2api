@@ -726,10 +726,6 @@ const (
 	// SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds 打票探测周期（秒，后台可改、热更新）。
 	// 缺失/非法回退 yaml（默认 6）。探测本身会叠加到账号请求频率上，过密会招来上游 429。
 	SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds = "openai_codex_ticket_harvest_probe_interval_seconds"
-	// SettingKeyOpenAICodexTicketWatchdogEnabled 门票守护开关（后台可改、热更新，默认开）。
-	// 开：业务响应里上游返回模型与请求模型不符、或响应头带回 312 长度 turn-state 时，
-	// 立即作废本次注入的门票并触发一次重采。关：只记账，不动门票。
-	SettingKeyOpenAICodexTicketWatchdogEnabled = "openai_codex_ticket_watchdog_enabled"
 	// SettingKeyClaudeCodeClientVersion 网关对 Anthropic 上游声明的 Claude Code CLI 客户端版本号（管理员覆写）。
 	// 空值表示跟随自动同步值；自动同步也没有结果时回退到 claude.CLIVersion()（环境变量覆盖 + 内置基线）。
 	// 版本太旧会被 Anthropic 拒绝（claude_code_version_too_old），故该值需保持跟随官方发布。
