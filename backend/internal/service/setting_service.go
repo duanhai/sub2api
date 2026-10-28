@@ -117,6 +117,7 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
+	scopedAdminKeyRepo                 ScopedAdminKeyRepository
 	apiKeyQueueCache                   atomic.Pointer[cachedAPIKeyQueueSettings]
 	apiKeyQueueMu                      sync.Mutex
 	settingRepo                        SettingRepository
@@ -139,6 +140,7 @@ type SettingService struct {
 	codexRestrictionPolicyCache        atomic.Value // *cachedCodexRestrictionPolicy
 	codexRestrictionPolicySF           singleflight.Group
 
+	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
 

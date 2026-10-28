@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -218,6 +219,11 @@ func (h *UsageHandler) List(c *gin.Context) {
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
 	if err != nil {
 		response.ErrorFrom(c, err)
+		return
+	}
+
+	if adminaccess.FromContext(c.Request.Context()) != nil {
+		response.Paginated(c, adminUsageLogResponses(c, records), result.Total, page, pageSize)
 		return
 	}
 
