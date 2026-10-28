@@ -1790,18 +1790,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAICodexTicketEnabled
 		}(),
-		OpenAICodexTicketFailClosed: func() bool {
-			if req.OpenAICodexTicketFailClosed != nil {
-				return *req.OpenAICodexTicketFailClosed
-			}
-			return previousSettings.OpenAICodexTicketFailClosed
-		}(),
-		OpenAICodexTicketTargetLength: func() int {
-			if req.OpenAICodexTicketTargetLength != nil {
-				return *req.OpenAICodexTicketTargetLength
-			}
-			return previousSettings.OpenAICodexTicketTargetLength
-		}(),
 		OpenAICodexTicketHarvestProxyURL: func() string {
 			next := strings.TrimSpace(req.OpenAICodexTicketHarvestProxyURL)
 			if service.IsMaskedProxyURL(next) {
@@ -2367,8 +2355,6 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAICodexClientVersionSynced:                         updatedSettings.OpenAICodexClientVersionSynced,
 		OpenAICodexVersionAutoSyncEnabled:                      updatedSettings.OpenAICodexVersionAutoSyncEnabled,
 		OpenAICodexTicketEnabled:                               updatedSettings.OpenAICodexTicketEnabled,
-		OpenAICodexTicketFailClosed:                            updatedSettings.OpenAICodexTicketFailClosed,
-		OpenAICodexTicketTargetLength:                          updatedSettings.OpenAICodexTicketTargetLength,
 		OpenAICodexTicketHarvestProxyURL:                       service.MaskProxyURL(updatedSettings.OpenAICodexTicketHarvestProxyURL),
 		OpenAICodexTicketHarvestProxyConfigured:                strings.TrimSpace(updatedSettings.OpenAICodexTicketHarvestProxyURL) != "",
 		ClaudeCodeClientVersion:                                updatedSettings.ClaudeCodeClientVersion,
