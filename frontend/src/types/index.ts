@@ -1216,7 +1216,6 @@ export interface Account {
     length?: number
     ready: boolean
     remaining_seconds: number
-    blocked: boolean
     expires_at?: string
   }>
   opencode_go_usage?: OpenCodeGoUsageState

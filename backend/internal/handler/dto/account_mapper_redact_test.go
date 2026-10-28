@@ -111,7 +111,10 @@ func TestAccountFromServiceShallow_RedactsCodexTurnTicketState(t *testing.T) {
 		},
 	}
 	got := AccountFromServiceShallow(src)
-	require.NotContains(t, got.Extra, "codex_turn_ticket:gpt-6-astra")
+	require.NotContains(t, got.Extra["codex_turn_ticket:gpt-6-astra"], "state")
+	require.NotEmpty(t, got.CodexTurnTickets)
+	require.Equal(t, "gpt-6-astra", got.CodexTurnTickets[0].Model)
+	require.True(t, got.CodexTurnTickets[0].Ready)
 	raw, err := json.Marshal(got)
 	require.NoError(t, err)
 	require.NotContains(t, string(raw), blob)
