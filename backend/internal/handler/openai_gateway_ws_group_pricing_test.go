@@ -166,14 +166,17 @@ func TestOpenAIResponsesWebSocket_KeyMovedToAnotherGroupKeepsConnectionGroup(t *
 		"a key moved to another group keeps the connection's group: the connection was scheduled from it")
 }
 
-func TestOpenAIResponsesWebSocket_FailedKeyRefreshKeepsConnectionGroup(t *testing.T) {
+func TestOpenAIResponsesWebSocket_UnavailableKeyPolicyRejectsNextTurn(t *testing.T) {
 	repo := newWSGroupPricingAPIKeyRepoStub(3.0)
 	apiKeyService := newWSGroupPricingAPIKeyService(repo)
-	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
-		firstPayload:     wsGroupPricingFirst,
-		secondPayload:    wsGroupPricingSecond,
-		apiKeyService:    apiKeyService,
-		apiKeyCredential: wsGroupPricingKey,
+	runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload:            wsGroupPricingFirst,
+		secondPayload:           wsGroupPricingSecond,
+		apiKeyService:           apiKeyService,
+		apiKeyCredential:        wsGroupPricingKey,
+		secondTurnCloseExpected: true,
+		closeStatus:             coderws.StatusInternalError,
+		closeReason:             "failed to acquire user concurrency slot",
 		afterFirstUpstreamRequest: func(*service.ChannelService) error {
 			return repo.adminUpdate(apiKeyService, func(_ *service.APIKey, group *service.Group) {
 				group.RateMultiplier = 0.3
@@ -182,8 +185,6 @@ func TestOpenAIResponsesWebSocket_FailedKeyRefreshKeepsConnectionGroup(t *testin
 		},
 	})
 
-	require.Len(t, got.logs, 2)
-	require.InDelta(t, 3.0, got.logs[1].RateMultiplier, 1e-12, "a failed refresh keeps the connection snapshot")
 	require.GreaterOrEqual(t, repo.lookupCount(), 2, "the second turn must have attempted a refresh")
 }
 

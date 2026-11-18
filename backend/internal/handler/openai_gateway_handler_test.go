@@ -3162,8 +3162,10 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	if tc.group != nil {
 		apiKey.Group = tc.group
 	}
+	if tc.apiKeyService == nil {
+		h.apiKeyService = newConcurrencyTestAPIKeyService(apiKey)
+	}
 	router := gin.New()
-	h.apiKeyService = newConcurrencyTestAPIKeyService(apiKey)
 	router.Use(func(c *gin.Context) {
 		c.Set(string(middleware.ContextKeyAPIKey), apiKey)
 		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: apiKey.User.ID, Concurrency: 1})
