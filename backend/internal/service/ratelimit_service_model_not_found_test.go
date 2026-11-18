@@ -6,11 +6,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"net/http"
 	"testing"
 	"time"
 
-	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
@@ -550,11 +550,10 @@ func TestRateLimitService_HandleUpstreamError_ModelNotFoundImageModelStillCoolsD
 	require.Equal(t, upstreamModelNotFoundReason, repo.modelRateLimitCalls[0].reason)
 }
 
-// 「模型不存在」冷却时长可后台热改；0 表示不冷却、不 failover，原样返回上游 404。
 func TestRateLimitService_ModelNotFoundCooldownConfigurable(t *testing.T) {
-	settingRepo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{
+	settingRepo := &codexPolicyMigrationRepoStub{values: map[string]string{
 		SettingKeyUpstreamModelNotFoundCooldownSeconds: "120",
-	}}}
+	}}
 	settings := NewSettingService(settingRepo, &config.Config{})
 	repo := &modelNotFoundAccountRepoStub{}
 	svc := &RateLimitService{accountRepo: repo, settingService: settings}
@@ -566,7 +565,6 @@ func TestRateLimitService_ModelNotFoundCooldownConfigurable(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(2*time.Minute), repo.modelRateLimitCalls[0].resetAt, 5*time.Second)
 
 	settingRepo.values[SettingKeyUpstreamModelNotFoundCooldownSeconds] = "0"
-	settings.InvalidateUpstreamModelNotFoundCooldownCache()
 	repo.modelRateLimitCalls = nil
 	require.False(t, svc.HandleUpstreamError(context.Background(), account, http.StatusNotFound, http.Header{}, body, "gpt-6-sol"))
 	require.Empty(t, repo.modelRateLimitCalls)
@@ -574,7 +572,6 @@ func TestRateLimitService_ModelNotFoundCooldownConfigurable(t *testing.T) {
 
 	// 未配置 → 仍是原来的 30 分钟。
 	delete(settingRepo.values, SettingKeyUpstreamModelNotFoundCooldownSeconds)
-	settings.InvalidateUpstreamModelNotFoundCooldownCache()
 	require.True(t, svc.HandleUpstreamError(context.Background(), account, http.StatusNotFound, http.Header{}, body, "gpt-6-sol"))
 	require.WithinDuration(t, time.Now().Add(upstreamModelNotFoundCooldown), repo.modelRateLimitCalls[0].resetAt, 5*time.Second)
 }

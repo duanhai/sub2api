@@ -449,6 +449,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// cyber 会话屏蔽开关 + TTL
 	updates[SettingKeyCyberSessionBlockEnabled] = strconv.FormatBool(settings.CyberSessionBlockEnabled)
+	if _, err := ParseCyberPolicyUserAllowlist(settings.CyberPolicyUserAllowlist); err != nil {
+		return nil, err
+	}
+	updates[SettingKeyCyberPolicyUserAllowlist] = settings.CyberPolicyUserAllowlist
 	if settings.CyberSessionBlockTTLSeconds > 0 {
 		updates[SettingKeyCyberSessionBlockTTLSeconds] = strconv.Itoa(settings.CyberSessionBlockTTLSeconds)
 	}
@@ -464,6 +468,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyBackendModeEnabled] = strconv.FormatBool(settings.BackendModeEnabled)
 
 	// Gateway forwarding behavior
+	if settings.UpstreamModelNotFoundCooldownSeconds < 0 || settings.UpstreamModelNotFoundCooldownSeconds > 86400 {
+		return nil, fmt.Errorf("model-not-found cooldown must be between 0 and 86400 seconds")
+	}
+	updates[SettingKeyUpstreamModelNotFoundCooldownSeconds] = strconv.Itoa(settings.UpstreamModelNotFoundCooldownSeconds)
 	mode := normalizeOpenAITTFTMode(settings.OpenAITTFTMode)
 	if strings.TrimSpace(settings.OpenAITTFTMode) != "" && strings.ToLower(strings.TrimSpace(settings.OpenAITTFTMode)) != OpenAITTFTModeSemantic && strings.ToLower(strings.TrimSpace(settings.OpenAITTFTMode)) != OpenAITTFTModeVisible {
 		return nil, fmt.Errorf("%s must be one of: %s/%s", SettingKeyOpenAITTFTMode, OpenAITTFTModeSemantic, OpenAITTFTModeVisible)
@@ -485,55 +493,6 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyOpenAICodexUserAgent] = strings.TrimSpace(settings.OpenAICodexUserAgent)
 	updates[SettingKeyOpenAICodexClientVersion] = NormalizeCodexClientVersion(settings.OpenAICodexClientVersion)
 	updates[SettingKeyOpenAICodexVersionAutoSyncEnabled] = strconv.FormatBool(settings.OpenAICodexVersionAutoSyncEnabled)
-	updates[SettingKeyOpenAICodexTicketEnabled] = strconv.FormatBool(settings.OpenAICodexTicketEnabled)
-	updates[SettingKeyOpenAICodexTicketFailClosed] = strconv.FormatBool(settings.OpenAICodexTicketFailClosed)
-	// 0 表示调用方未指定（部分更新、程序化调用）：清空后台键，回退 yaml/默认 292；
-	// 只有显式给出的值才做区间校验。
-	if settings.OpenAICodexTicketTargetLength == 0 {
-		updates[SettingKeyOpenAICodexTicketTargetLength] = ""
-	} else {
-		if err := ValidateOpenAICodexTicketTargetLength(settings.OpenAICodexTicketTargetLength); err != nil {
-			return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_TARGET_LENGTH", err.Error())
-		}
-		updates[SettingKeyOpenAICodexTicketTargetLength] = strconv.Itoa(settings.OpenAICodexTicketTargetLength)
-	}
-	updates[SettingKeyOpenAICodexTicketWatchdogEnabled] = strconv.FormatBool(settings.OpenAICodexTicketWatchdogEnabled)
-	updates[SettingKeyOpenAICodexTicketFallbackEnabled] = strconv.FormatBool(settings.OpenAICodexTicketFallbackEnabled)
-	if err := ValidateOpenAICodexTicketFallbackModels(settings.OpenAICodexTicketFallbackModels); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_FALLBACK_MODELS", err.Error())
-	}
-	updates[SettingKeyOpenAICodexTicketFallbackModels] = strings.TrimSpace(settings.OpenAICodexTicketFallbackModels)
-	// TTL：0 视为未指定，清空回退 yaml；其余值做区间校验。
-	if settings.OpenAICodexTicketTTLSeconds == 0 {
-		updates[SettingKeyOpenAICodexTicketTTLSeconds] = ""
-	} else {
-		if err := ValidateOpenAICodexTicketTTLSeconds(settings.OpenAICodexTicketTTLSeconds); err != nil {
-			return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_TTL", err.Error())
-		}
-		updates[SettingKeyOpenAICodexTicketTTLSeconds] = strconv.Itoa(settings.OpenAICodexTicketTTLSeconds)
-	}
-	if err := ValidateOpenAICodexTicketReharvestAfterSeconds(settings.OpenAICodexTicketReharvestAfterSeconds); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_REHARVEST", err.Error())
-	}
-	updates[SettingKeyOpenAICodexTicketReharvestAfterSeconds] = strconv.Itoa(settings.OpenAICodexTicketReharvestAfterSeconds)
-	updates[SettingKeyOpenAICodexTicketCookieEnabled] = strconv.FormatBool(settings.OpenAICodexTicketCookieEnabled)
-	if err := ValidateUpstreamModelNotFoundCooldownSeconds(settings.UpstreamModelNotFoundCooldownSeconds); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_MODEL_NOT_FOUND_COOLDOWN", err.Error())
-	}
-	updates[SettingKeyUpstreamModelNotFoundCooldownSeconds] = strconv.Itoa(settings.UpstreamModelNotFoundCooldownSeconds)
-	// 同上：0 视为未指定，清空后台键回退 yaml/默认。
-	if settings.OpenAICodexTicketHarvestProbeIntervalSeconds == 0 {
-		updates[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = ""
-	} else {
-		if err := ValidateOpenAICodexTicketHarvestProbeInterval(settings.OpenAICodexTicketHarvestProbeIntervalSeconds); err != nil {
-			return nil, infraerrors.BadRequest("INVALID_CODEX_TICKET_PROBE_INTERVAL", err.Error())
-		}
-		updates[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds] = strconv.Itoa(settings.OpenAICodexTicketHarvestProbeIntervalSeconds)
-	}
-	if err := ValidateOpenAICodexTicketHarvestProxyURL(settings.OpenAICodexTicketHarvestProxyURL); err != nil {
-		return nil, infraerrors.BadRequest("INVALID_CODEX_HARVEST_PROXY", err.Error())
-	}
-	updates[SettingKeyOpenAICodexTicketHarvestProxyURL] = strings.TrimSpace(settings.OpenAICodexTicketHarvestProxyURL)
 	// SettingKeyOpenAICodexClientVersionSynced 由自动同步任务独占写入，此处不得覆盖，
 	// 否则面板保存会把同步结果清空。
 	updates[SettingKeyClaudeCodeClientVersion] = NormalizeClaudeCodeClientVersion(settings.ClaudeCodeClientVersion)
@@ -795,18 +754,6 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// 版本号缓存只做失效，不在此重算：生效值还取决于自动同步写入的 synced 键，
 	// 这里没有它的最新值，重算会把同步结果覆盖成陈旧值。
 	s.InvalidateOpenAICodexClientVersionCache()
-	s.InvalidateOpenAICodexTicketEnabledCache()
-	s.InvalidateOpenAICodexTicketFailClosedCache()
-	s.InvalidateOpenAICodexTicketTargetLengthCache()
-	s.InvalidateOpenAICodexTicketHarvestProbeIntervalCache()
-	s.InvalidateOpenAICodexTicketWatchdogCache()
-	s.InvalidateOpenAICodexTicketFallbackCache()
-	s.InvalidateOpenAICodexTicketFallbackModelsCache()
-	s.InvalidateOpenAICodexTicketTTLCache()
-	s.InvalidateOpenAICodexTicketReharvestCache()
-	s.InvalidateOpenAICodexTicketCookieCache()
-	s.InvalidateUpstreamModelNotFoundCooldownCache()
-	s.InvalidateOpenAICodexTicketHarvestProxyCache()
 	s.InvalidateClaudeCodeClientVersionCache()
 	openAIAdvancedSchedulerSettingSF.Forget(openAIAdvancedSchedulerSettingKey)
 	openAIAdvancedSchedulerSettingCache.Store(&cachedOpenAIAdvancedSchedulerSetting{
@@ -861,6 +808,11 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 	// codex_cli_only 加固策略缓存：设置更新后强制下次重载（涉及 4 个键 + JSON 解析，直接置过期）。
 	s.codexRestrictionPolicySF.Forget("codex_restriction_policy")
 	s.codexRestrictionPolicyCache.Store(&cachedCodexRestrictionPolicy{expiresAt: 0})
+	// Retain the successfully saved allowlist if the next DB refresh fails.
+	s.cyberSessionBlockRuntimeMu.Lock()
+	allowlistedUsers, _ := ParseCyberPolicyUserAllowlist(settings.CyberPolicyUserAllowlist)
+	s.cyberSessionBlockRuntimeCache.Store(&cachedCyberSessionBlockRuntime{allowlistedUsers: allowlistedUsers})
+	s.cyberSessionBlockRuntimeMu.Unlock()
 	if s.onUpdate != nil {
 		s.onUpdate() // Invalidate cache after settings update
 	}

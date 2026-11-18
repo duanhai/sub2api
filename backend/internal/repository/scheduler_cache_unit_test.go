@@ -446,6 +446,47 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaAutoPauseFields(t *testing.T) {
 	require.Equal(t, false, got.Extra["auto_pause_7d_disabled"])
 }
 
+// 候选过滤读的是 Redis 元数据投影；自动用卡的开关、阈值和卡状态缺失时，
+// 卡可用的 OpenAI 号会在暂停阈值处被一刀切停调，放行到用卡阈值的逻辑永远不生效。
+func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T) {
+	checkedAt := time.Now().UTC().Format(time.RFC3339)
+	account := service.Account{
+		ID:          40,
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Extra: map[string]any{
+			"codex_7d_used_percent":                          90.0,
+			service.OpenAIAutoResetCreditEnabledExtraKey:     true,
+			service.OpenAIAutoResetCredit5hThresholdExtraKey: 0.95,
+			service.OpenAIAutoResetCredit7dThresholdExtraKey: 0.98,
+			service.OpenAIAutoResetCreditStateExtraKey: map[string]any{
+				"status":          service.OpenAIAutoResetStatusAvailable,
+				"available_count": 3,
+				"checked_at":      checkedAt,
+				"trigger_window":  "7d",
+			},
+		},
+	}
+
+	_, metaPayload, err := marshalSchedulerCacheAccount(account)
+	require.NoError(t, err)
+	var cached service.Account
+	require.NoError(t, json.Unmarshal(metaPayload, &cached))
+
+	config := service.ResolveOpenAIAutoResetCreditConfig(&cached)
+	require.True(t, config.Enabled)
+	require.Equal(t, 0.95, config.Threshold5h)
+	require.Equal(t, 0.98, config.Threshold7d)
+
+	state, ok := cached.Extra[service.OpenAIAutoResetCreditStateExtraKey].(map[string]any)
+	require.True(t, ok, "卡状态必须进入调度投影")
+	require.Equal(t, service.OpenAIAutoResetStatusAvailable, state["status"])
+	require.EqualValues(t, 3, state["available_count"])
+	require.Equal(t, checkedAt, state["checked_at"])
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testing.T) {
 	now := time.Now().UTC()
 	activeStart := now.Add(-time.Hour).Format(time.RFC3339)
@@ -524,6 +565,23 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testi
 			require.Equal(t, !tc.quotaExceeded, cached.IsSchedulable())
 		})
 	}
+}
+
+func TestBuildSchedulerMetadataAccount_KeepsOpenAIImageSizeTiers(t *testing.T) {
+	account := service.Account{
+		ID:       91,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Extra: map[string]any{
+			service.AccountExtraOpenAIImageSizeTiers: []any{"4K"},
+			"unused_large_field":                     "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, []string{"4K"}, got.OpenAIImageSizeTiers())
+	require.Nil(t, got.Extra["unused_large_field"])
 }
 
 func TestBuildSchedulerMetadataAccount_KeepsModelRateLimits(t *testing.T) {
@@ -1120,6 +1178,33 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIPassthroughForModelGate(t *tes
 			require.Equal(t, map[string]any{"gpt-5.5": "gpt-5.5"}, restored.Credentials["model_mapping"])
 		})
 	}
+}
+
+// 透传账号显式开启"按模型筛选"后，候选过滤同样读的是本投影；裁掉
+// openai_passthrough_model_filter 会让账号在选号阶段退回"透传放行全部模型"，
+// 而模型列表等读完整账号的路径仍按白名单收窄，两边口径分裂。
+func TestBuildSchedulerMetadataAccount_KeepsOpenAIPassthroughModelFilter(t *testing.T) {
+	account := service.Account{
+		ID:       8748,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"qwen3.8-max": "qwen3.8-max"},
+			"api_key":       "drop-me",
+		},
+		Extra: map[string]any{"openai_passthrough": true, "openai_passthrough_model_filter": true},
+	}
+	require.False(t, account.IsModelSupported("gpt-6.1-sol"), "前置条件：开启筛选的透传账号应拒绝白名单外模型")
+
+	payload, err := json.Marshal(buildSchedulerMetadataAccount(account))
+	require.NoError(t, err)
+	var restored service.Account
+	require.NoError(t, json.Unmarshal(payload, &restored))
+
+	require.Equal(t, true, restored.Extra["openai_passthrough_model_filter"])
+	require.True(t, restored.IsOpenAIPassthroughModelFilterEnabled())
+	require.False(t, restored.IsModelSupported("gpt-6.1-sol"))
+	require.True(t, restored.IsModelSupported("qwen3.8-max"))
 }
 
 // 调度投影必须保留账号的 RPM 配置。

@@ -220,6 +220,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 
 		// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 		SettingKeyCyberSessionBlockEnabled:    "false",
+		SettingKeyCyberPolicyUserAllowlist:    "",
 		SettingKeyCyberSessionBlockTTLSeconds: "3600",
 
 		// Claude Code version check (default: empty = disabled)
@@ -246,7 +247,6 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyOpenAICodexClientVersion:                           "",
 		SettingKeyOpenAICodexClientVersionSynced:                     "",
 		SettingKeyOpenAICodexVersionAutoSyncEnabled:                  "true",
-		SettingKeyOpenAICodexTicketHarvestProxyURL:                   "",
 		SettingKeyClaudeCodeClientVersion:                            "",
 		SettingKeyClaudeCodeClientVersionSynced:                      "",
 		SettingKeyClaudeCodeVersionAutoSyncEnabled:                   "true",
@@ -844,6 +844,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// cyber 会话屏蔽（默认关闭，TTL 默认 3600s）
 	result.CyberSessionBlockEnabled = settings[SettingKeyCyberSessionBlockEnabled] == "true"
+	result.CyberPolicyUserAllowlist = settings[SettingKeyCyberPolicyUserAllowlist]
 	if v, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyCyberSessionBlockTTLSeconds])); err == nil && v > 0 {
 		result.CyberSessionBlockTTLSeconds = v
 	} else {
@@ -859,6 +860,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// Gateway forwarding behavior (defaults: fingerprint=true, metadata_passthrough=false,
 	// cch_signing=false, claude_oauth_system_prompt_injection=true)
+	result.UpstreamModelNotFoundCooldownSeconds = modelNotFoundCooldownSeconds(settings[SettingKeyUpstreamModelNotFoundCooldownSeconds])
 	result.OpenAITTFTMode = normalizeOpenAITTFTMode(settings[SettingKeyOpenAITTFTMode])
 	if v, ok := settings[SettingKeyEnableFingerprintUnification]; ok && v != "" {
 		result.EnableFingerprintUnification = v == "true"
@@ -895,75 +897,6 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	} else {
 		result.OpenAICodexVersionAutoSyncEnabled = true
 	}
-	if v, ok := settings[SettingKeyOpenAICodexTicketEnabled]; ok && v != "" {
-		result.OpenAICodexTicketEnabled = v == "true"
-	} else if s != nil && s.cfg != nil {
-		result.OpenAICodexTicketEnabled = s.cfg.Gateway.OpenAICodexTicket.Enabled
-	}
-	// 缺票拦截：后台键优先，缺失回退 yaml/env（默认 false，门票只是增强能力）。
-	if v, ok := settings[SettingKeyOpenAICodexTicketFailClosed]; ok && v != "" {
-		result.OpenAICodexTicketFailClosed = v == "true"
-	} else if s != nil && s.cfg != nil {
-		result.OpenAICodexTicketFailClosed = s.cfg.Gateway.OpenAICodexTicket.FailClosed
-	}
-	// 门票目标长度：后台键优先（须在允许区间内），缺失回退 yaml，再回退 292。
-	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketTargetLength])); err == nil && ValidateOpenAICodexTicketTargetLength(n) == nil {
-		result.OpenAICodexTicketTargetLength = n
-	} else if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.TargetLength > 0 {
-		result.OpenAICodexTicketTargetLength = s.cfg.Gateway.OpenAICodexTicket.TargetLength
-	}
-	if result.OpenAICodexTicketTargetLength <= 0 {
-		result.OpenAICodexTicketTargetLength = openAICodexTicketDefaultTargetLength
-	}
-	// 探测周期：后台键优先（须在允许区间内），缺失回退 yaml，再回退 6 秒。
-	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds])); err == nil && ValidateOpenAICodexTicketHarvestProbeInterval(n) == nil {
-		result.OpenAICodexTicketHarvestProbeIntervalSeconds = n
-	} else if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.HarvestProbeIntervalSeconds > 0 {
-		result.OpenAICodexTicketHarvestProbeIntervalSeconds = s.cfg.Gateway.OpenAICodexTicket.HarvestProbeIntervalSeconds
-	}
-	if result.OpenAICodexTicketHarvestProbeIntervalSeconds <= 0 {
-		result.OpenAICodexTicketHarvestProbeIntervalSeconds = openAICodexTicketDefaultProbeIntervalSeconds
-	}
-	// 门票守护默认开启：缺失/空值一律视为开启。
-	if v, ok := settings[SettingKeyOpenAICodexTicketWatchdogEnabled]; ok && v != "" {
-		result.OpenAICodexTicketWatchdogEnabled = v == "true"
-	} else {
-		result.OpenAICodexTicketWatchdogEnabled = true
-	}
-	// 无票兜底降级默认开启；映射表后台优先，缺失回退 yaml。
-	if v, ok := settings[SettingKeyOpenAICodexTicketFallbackEnabled]; ok && v != "" {
-		result.OpenAICodexTicketFallbackEnabled = v == "true"
-	} else {
-		result.OpenAICodexTicketFallbackEnabled = true
-	}
-	result.OpenAICodexTicketFallbackModels = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketFallbackModels])
-	// 门票新鲜度：TTL / 持续打票间隔后台优先，缺失回退 yaml；Cookie 复用默认开。
-	result.OpenAICodexTicketTTLSeconds = openAICodexTicketDefaultTTLSeconds
-	if s != nil && s.cfg != nil && s.cfg.Gateway.OpenAICodexTicket.TTLSeconds > 0 {
-		result.OpenAICodexTicketTTLSeconds = s.cfg.Gateway.OpenAICodexTicket.TTLSeconds
-	}
-	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketTTLSeconds])); err == nil && ValidateOpenAICodexTicketTTLSeconds(n) == nil {
-		result.OpenAICodexTicketTTLSeconds = n
-	}
-	if s != nil && s.cfg != nil {
-		result.OpenAICodexTicketReharvestAfterSeconds = s.cfg.Gateway.OpenAICodexTicket.ReharvestAfterSeconds
-	}
-	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyOpenAICodexTicketReharvestAfterSeconds])); err == nil && ValidateOpenAICodexTicketReharvestAfterSeconds(n) == nil {
-		result.OpenAICodexTicketReharvestAfterSeconds = n
-	}
-	if v, ok := settings[SettingKeyOpenAICodexTicketCookieEnabled]; ok && v != "" {
-		result.OpenAICodexTicketCookieEnabled = v == "true"
-	} else {
-		result.OpenAICodexTicketCookieEnabled = true
-	}
-	result.UpstreamModelNotFoundCooldownSeconds = int(upstreamModelNotFoundCooldown.Seconds())
-	if n, err := strconv.Atoi(strings.TrimSpace(settings[SettingKeyUpstreamModelNotFoundCooldownSeconds])); err == nil && ValidateUpstreamModelNotFoundCooldownSeconds(n) == nil {
-		result.UpstreamModelNotFoundCooldownSeconds = n
-	}
-	if result.OpenAICodexTicketFallbackModels == "" && s != nil && s.cfg != nil {
-		result.OpenAICodexTicketFallbackModels = FormatOpenAICodexTicketFallbackModels(s.cfg.Gateway.OpenAICodexTicket.FallbackModels)
-	}
-	result.OpenAICodexTicketHarvestProxyURL = strings.TrimSpace(settings[SettingKeyOpenAICodexTicketHarvestProxyURL])
 	result.ClaudeCodeClientVersion = NormalizeClaudeCodeClientVersion(settings[SettingKeyClaudeCodeClientVersion])
 	result.ClaudeCodeClientVersionSynced = NormalizeClaudeCodeClientVersion(settings[SettingKeyClaudeCodeClientVersionSynced])
 	// 自动同步默认开启：缺失/空值一律视为开启，与 openai_codex_version_auto_sync_enabled 同一惯例。

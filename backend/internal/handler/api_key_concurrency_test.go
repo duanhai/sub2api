@@ -98,7 +98,7 @@ func TestAPIKeyConcurrencyWebSocketReloadsPolicyBetweenTurns(t *testing.T) {
 	defer upstream.Close()
 	svc := service.NewConcurrencyService(testutil.NewRedisConcurrencyCache(t))
 	var limit atomic.Int64 // Existing and new keys initially have no limit.
-	harness := newOpenAIWSPassthroughHandlerHarness(t, upstream.URL, func(h *OpenAIGatewayHandler, key *service.APIKey) {
+	harness := newOpenAIWSPassthroughHandlerHarness(t, upstream.URL, nil, func(h *OpenAIGatewayHandler, key *service.APIKey) {
 		h.concurrencyHelper = NewConcurrencyHelper(svc, SSEPingFormatNone, time.Second)
 		h.apiKeyService = service.NewAPIKeyService(&concurrencyTestAPIKeyRepo{key: key, limit: &limit}, nil, nil, nil, nil, nil, &config.Config{})
 	})

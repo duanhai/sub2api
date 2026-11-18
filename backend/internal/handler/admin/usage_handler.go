@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"net/http"
 	"strconv"
 	"strings"
@@ -221,6 +222,10 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
+	if adminaccess.RestrictedFromContext(c.Request.Context()) != nil {
+		response.Paginated(c, adminUsageLogResponses(c, records), result.Total, page, pageSize)
+		return
+	}
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	topicLookups := make([]securityaudit.TopicSummaryUsageLookup, 0, len(records))
 	for i := range records {

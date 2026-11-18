@@ -10,9 +10,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type queueSettingRepo struct {
+	*codexPolicyMigrationRepoStub
+	err error
+}
+
+func (r *queueSettingRepo) GetValue(ctx context.Context, key string) (string, error) {
+	if r.err != nil {
+		return "", r.err
+	}
+	return r.codexPolicyMigrationRepoStub.GetValue(ctx, key)
+}
 func TestAPIKeyQueuePanelPolicyAndWSConnectionSnapshot(t *testing.T) {
 	ctx := context.Background()
-	repo := &codexTicketSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
+	repo := &queueSettingRepo{codexPolicyMigrationRepoStub: &codexPolicyMigrationRepoStub{values: map[string]string{}}}
 	settings := NewSettingService(repo, nil)
 	svc := NewConcurrencyService(nil)
 	svc.SetAPIKeyQueueSettings(settings)

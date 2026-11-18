@@ -224,6 +224,8 @@ const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
 const formatScopeName = (scope: string): string => {
   const aliases: Record<string, string> = {
     // Claude 系列
+    'claude-fable-5-2': 'CFable52',
+    'claude-mythos-5-2': 'CMythos52',
     'claude-fable-5-1': 'CFable51',
     'claude-fable-5': 'CFable5',
     'claude-opus-4-6': 'COpus46',
@@ -235,6 +237,7 @@ const formatScopeName = (scope: string): string => {
     'claude-sonnet-4-6': 'CSon46',
     'claude-sonnet-4-5': 'CSon45',
     'claude-sonnet-4-5-thinking': 'CSon45T',
+    'claude-sonnet-5-5': 'CSon55',
     'claude-sonnet-5': 'CSon5',
     // Gemini 2.5 系列
     'gemini-2.5-flash': 'G25F',

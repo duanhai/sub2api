@@ -19,6 +19,7 @@ import (
 )
 
 type openAIWSPassthroughHandlerHarness struct {
+	handler        *OpenAIGatewayHandler
 	clientConn     *coderws.Conn
 	handlerDone    <-chan struct{}
 	moderationRepo *contentModerationHandlerTestRepo
@@ -26,7 +27,7 @@ type openAIWSPassthroughHandlerHarness struct {
 	apiKey         *service.APIKey
 }
 
-func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string, configure ...func(*OpenAIGatewayHandler, *service.APIKey)) *openAIWSPassthroughHandlerHarness {
+func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string, settings map[string]string, configure ...func(*OpenAIGatewayHandler, *service.APIKey)) *openAIWSPassthroughHandlerHarness {
 	t.Helper()
 	gatewayCache := testutil.NewRedisGatewayCache(t)
 
@@ -35,6 +36,9 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string, conf
 		service.SettingKeyCyberSessionBlockEnabled:    "true",
 		service.SettingKeyCyberSessionBlockTTLSeconds: "60",
 	}}
+	for key, value := range settings {
+		settingRepo.values[key] = value
+	}
 	moderationRepo := &contentModerationHandlerTestRepo{}
 	moderationSvc := service.NewContentModerationService(settingRepo, moderationRepo, nil, nil, nil, nil, nil, nil)
 	settingSvc := service.NewSettingService(settingRepo, nil)
@@ -90,6 +94,7 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string, conf
 
 	apiKey := &service.APIKey{
 		ID:      1851,
+		UserID:  1751,
 		Name:    "ws-cyber-key",
 		Key:     "sk-handler-cyber-test",
 		GroupID: &groupID,
@@ -120,6 +125,7 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string, conf
 	t.Cleanup(func() { _ = clientConn.CloseNow() })
 
 	return &openAIWSPassthroughHandlerHarness{
+		handler:        h,
 		clientConn:     clientConn,
 		handlerDone:    handlerDone,
 		moderationRepo: moderationRepo,
@@ -165,7 +171,7 @@ func TestOpenAIResponsesWebSocketV2PassthroughCyberMarkIsConsumedAfterTurn(t *te
 		require.NoError(t, err)
 	}))
 	defer upstreamServer.Close()
-	harness := newOpenAIWSPassthroughHandlerHarness(t, upstreamServer.URL)
+	harness := newOpenAIWSPassthroughHandlerHarness(t, upstreamServer.URL, nil)
 
 	requestPayload := `{"type":"response.create","model":"gpt-5.1","prompt_cache_key":"cyber-session-1","input":"test"}`
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
@@ -266,7 +272,7 @@ func TestOpenAIResponsesWebSocketV2PassthroughNonCyberTurnAllowsFollowup(t *test
 		cancelRead()
 	}))
 	defer upstreamServer.Close()
-	harness := newOpenAIWSPassthroughHandlerHarness(t, upstreamServer.URL)
+	harness := newOpenAIWSPassthroughHandlerHarness(t, upstreamServer.URL, nil)
 
 	firstPayload := `{"type":"response.create","model":"gpt-5.1","prompt_cache_key":"non-cyber-session-1","input":"first"}`
 	writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)

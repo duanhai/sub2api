@@ -98,7 +98,7 @@ const antigravityUserAgentVersionErrorTTL = 5 * time.Second
 const antigravityUserAgentVersionDBTimeout = 5 * time.Second
 
 // DefaultOpenAICodexUserAgent 是 OpenAI Codex 默认 User-Agent，用于规避浏览器 UA 的质询。
-// 默认采用 codex-tui 身份，版本段随 codexCLIVersion 一起更新。
+// 默认采用 codex_cli_rs 身份，避免历史 codex-tui 出口触发 sub2api 的身份风控指纹。
 const DefaultOpenAICodexUserAgent = codexCLIUserAgent
 
 // cachedOpenAICodexUserAgent 缓存 OpenAI Codex UA（进程内缓存，60s TTL）
@@ -152,12 +152,13 @@ type cachedCodexRestrictionPolicy struct {
 	expiresAt int64 // unix nano
 }
 
-// cachedCyberSessionBlockRuntime cyber 会话屏蔽开关+TTL 进程内缓存（60s TTL）。
+// cachedCyberSessionBlockRuntime cyber 会话屏蔽开关、TTL 与用户白名单缓存（60s TTL）。
 // GetCyberSessionBlockRuntime 在网关请求热路径上被调用，避免每次访问 DB。
 type cachedCyberSessionBlockRuntime struct {
-	enabled   bool
-	ttl       time.Duration
-	expiresAt int64 // unix nano
+	allowlistedUsers map[int64]struct{}
+	enabled          bool
+	ttl              time.Duration
+	expiresAt        int64 // unix nano
 }
 
 const cyberSessionBlockRuntimeCacheTTL = 60 * time.Second
@@ -172,7 +173,7 @@ const openAIQuotaAutoPauseSettingsRefreshKey = "openai_quota_auto_pause_settings
 
 // GetCyberSessionBlockRuntime 返回 (开关, TTL)，进程内缓存 ~60s，
 // 供网关热路径读取时避免 DB 往返。
-// 两个 setting key 在单次 singleflight 里一起读取，减少 DB 往返。
+// 屏蔽设置与用户白名单在单次 singleflight 中一起读取。
 // 默认值：开关 false，TTL 1h（与粘性会话对齐）。
 func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool, time.Duration) {
 	if cached, ok := s.cyberSessionBlockRuntimeCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
@@ -181,6 +182,8 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 		}
 	}
 	result, _, _ := s.cyberSessionBlockRuntimeSF.Do("cyber_session_block_runtime", func() (any, error) {
+		s.cyberSessionBlockRuntimeMu.Lock()
+		defer s.cyberSessionBlockRuntimeMu.Unlock()
 		if cached, ok := s.cyberSessionBlockRuntimeCache.Load().(*cachedCyberSessionBlockRuntime); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return cached, nil
@@ -192,15 +195,11 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 		enabledVal, enabledErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockEnabled)
 		ttlVal, ttlErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberSessionBlockTTLSeconds)
 
+		previous, _ := s.cyberSessionBlockRuntimeCache.Load().(*cachedCyberSessionBlockRuntime)
+		cacheTTL := cyberSessionBlockRuntimeCacheTTL
 		if enabledErr != nil && !errors.Is(enabledErr, ErrSettingNotFound) {
 			slog.Warn("failed to get cyber_session_block_enabled setting", "error", enabledErr)
-			entry := &cachedCyberSessionBlockRuntime{
-				enabled:   false,
-				ttl:       time.Hour,
-				expiresAt: time.Now().Add(cyberSessionBlockRuntimeErrorTTL).UnixNano(),
-			}
-			s.cyberSessionBlockRuntimeCache.Store(entry)
-			return entry, nil
+			cacheTTL = cyberSessionBlockRuntimeErrorTTL
 		}
 
 		enabled := enabledErr == nil && strings.TrimSpace(enabledVal) == "true"
@@ -212,10 +211,23 @@ func (s *SettingService) GetCyberSessionBlockRuntime(ctx context.Context) (bool,
 			}
 		}
 
+		allowlistVal, allowlistErr := s.settingRepo.GetValue(dbCtx, SettingKeyCyberPolicyUserAllowlist)
+		var allowlistedUsers map[int64]struct{}
+		if allowlistErr == nil {
+			allowlistedUsers, allowlistErr = ParseCyberPolicyUserAllowlist(allowlistVal)
+		}
+		if allowlistErr != nil && !errors.Is(allowlistErr, ErrSettingNotFound) {
+			slog.Warn("failed to load risk control user allowlist", "error", allowlistErr)
+			cacheTTL = cyberSessionBlockRuntimeErrorTTL
+			if previous != nil {
+				allowlistedUsers = previous.allowlistedUsers
+			}
+		}
 		entry := &cachedCyberSessionBlockRuntime{
-			enabled:   enabled,
-			ttl:       ttl,
-			expiresAt: time.Now().Add(cyberSessionBlockRuntimeCacheTTL).UnixNano(),
+			allowlistedUsers: allowlistedUsers,
+			enabled:          enabled,
+			ttl:              ttl,
+			expiresAt:        time.Now().Add(cacheTTL).UnixNano(),
 		}
 		s.cyberSessionBlockRuntimeCache.Store(entry)
 		return entry, nil
@@ -275,374 +287,6 @@ func (s *SettingService) GetAntigravityUserAgentVersion(ctx context.Context) str
 	return fallback
 }
 
-type cachedOpenAICodexTicketSetting struct {
-	value     string // TrimSpace 后的后台原始值；"" 表示后台未设置
-	expiresAt int64
-}
-
-const openAICodexTicketSettingCacheTTL = 5 * time.Second
-
-// getOpenAICodexTicketRawSetting 读取一个 Codex 292 门票相关的后台设置原始值。
-// 返回 (value, true) 表示读到了后台值（可能为 ""，即后台未设置，调用方应回退 yaml/env）；
-// 返回 (_, false) 表示本次无法判定（ctx 结束、无 repo、DB 出错且无缓存），调用方回退 fallback。
-// 进程内缓存 5 秒，singleflight 合并并发回源；DB 出错时沿用上一次缓存值。
-func (s *SettingService) getOpenAICodexTicketRawSetting(ctx context.Context, cache *atomic.Value, sf *singleflight.Group, key string) (string, bool) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if ctx.Err() != nil {
-		return "", false
-	}
-	if s == nil || s.settingRepo == nil {
-		return "", false
-	}
-	if cached, ok := cache.Load().(*cachedOpenAICodexTicketSetting); ok && cached != nil {
-		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.value, true
-		}
-	}
-	resultCh := sf.DoChan(key, func() (any, error) {
-		if cached, ok := cache.Load().(*cachedOpenAICodexTicketSetting); ok && cached != nil {
-			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.value, nil
-			}
-		}
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		value, err := s.settingRepo.GetValue(dbCtx, key)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if err != nil && !errors.Is(err, ErrSettingNotFound) {
-			if cached, ok := cache.Load().(*cachedOpenAICodexTicketSetting); ok && cached != nil {
-				return cached.value, nil
-			}
-			return nil, err
-		}
-		if err != nil {
-			value = ""
-		}
-		value = strings.TrimSpace(value)
-		cache.Store(&cachedOpenAICodexTicketSetting{
-			value:     value,
-			expiresAt: time.Now().Add(openAICodexTicketSettingCacheTTL).UnixNano(),
-		})
-		return value, nil
-	})
-	select {
-	case <-ctx.Done():
-		return "", false
-	case result := <-resultCh:
-		if v, ok := result.Val.(string); ok && result.Err == nil {
-			return v, true
-		}
-		return "", false
-	}
-}
-
-func invalidateOpenAICodexTicketSettingCache(cache *atomic.Value, sf *singleflight.Group, key string) {
-	sf.Forget(key)
-	cache.Store(&cachedOpenAICodexTicketSetting{expiresAt: 0})
-}
-
-// GetOpenAICodexTicketEnabled 返回后台 292 打票总开关。
-// 设置键存在时以后台为准；缺失则回退 yaml/env。
-func (s *SettingService) GetOpenAICodexTicketEnabled(ctx context.Context, fallback bool) bool {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketEnabledCache, &s.openAICodexTicketEnabledSF, SettingKeyOpenAICodexTicketEnabled)
-	if !ok || raw == "" {
-		return fallback
-	}
-	return raw == "true"
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketEnabledCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketEnabledCache, &s.openAICodexTicketEnabledSF, SettingKeyOpenAICodexTicketEnabled)
-}
-
-// GetOpenAICodexTicketFailClosed 返回后台「缺票拦截」开关。
-// 关闭（默认）：无有效门票时不注入、不拦截，按客户端原样转发；
-// 开启：无有效门票的账号对门控模型暂停调度。设置键存在时以后台为准；缺失则回退 yaml/env。
-func (s *SettingService) GetOpenAICodexTicketFailClosed(ctx context.Context, fallback bool) bool {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketFailClosedCache, &s.openAICodexTicketFailClosedSF, SettingKeyOpenAICodexTicketFailClosed)
-	if !ok || raw == "" {
-		return fallback
-	}
-	return raw == "true"
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketFailClosedCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketFailClosedCache, &s.openAICodexTicketFailClosedSF, SettingKeyOpenAICodexTicketFailClosed)
-}
-
-// GetOpenAICodexTicketTargetLength 返回后台配置的门票目标长度。
-// 设置缺失、非法或不在允许区间时回退 fallback（yaml/env，再回退 292）。
-func (s *SettingService) GetOpenAICodexTicketTargetLength(ctx context.Context, fallback int) int {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketTargetLengthCache, &s.openAICodexTicketTargetLengthSF, SettingKeyOpenAICodexTicketTargetLength)
-	if !ok || raw == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || ValidateOpenAICodexTicketTargetLength(n) != nil {
-		return fallback
-	}
-	return n
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketTargetLengthCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketTargetLengthCache, &s.openAICodexTicketTargetLengthSF, SettingKeyOpenAICodexTicketTargetLength)
-}
-
-// GetOpenAICodexTicketHarvestProbeIntervalSeconds 返回后台配置的打票探测周期（秒）。
-// 设置缺失、非法或不在允许区间时回退 fallback（yaml/env，再回退 6）。
-func (s *SettingService) GetOpenAICodexTicketHarvestProbeIntervalSeconds(ctx context.Context, fallback int) int {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketProbeIntervalCache, &s.openAICodexTicketProbeIntervalSF, SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds)
-	if !ok || raw == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || ValidateOpenAICodexTicketHarvestProbeInterval(n) != nil {
-		return fallback
-	}
-	return n
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketHarvestProbeIntervalCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketProbeIntervalCache, &s.openAICodexTicketProbeIntervalSF, SettingKeyOpenAICodexTicketHarvestProbeIntervalSeconds)
-}
-
-// GetOpenAICodexTicketWatchdogEnabled 返回门票守护开关；缺失回退 fallback（默认 true）。
-func (s *SettingService) GetOpenAICodexTicketWatchdogEnabled(ctx context.Context, fallback bool) bool {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketWatchdogCache, &s.openAICodexTicketWatchdogSF, SettingKeyOpenAICodexTicketWatchdogEnabled)
-	if !ok || raw == "" {
-		return fallback
-	}
-	return raw == "true"
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketWatchdogCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketWatchdogCache, &s.openAICodexTicketWatchdogSF, SettingKeyOpenAICodexTicketWatchdogEnabled)
-}
-
-// GetOpenAICodexTicketFallbackEnabled 返回无票兜底降级开关；缺失回退 fallback（默认 true）。
-func (s *SettingService) GetOpenAICodexTicketFallbackEnabled(ctx context.Context, fallback bool) bool {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketFallbackCache, &s.openAICodexTicketFallbackSF, SettingKeyOpenAICodexTicketFallbackEnabled)
-	if !ok || raw == "" {
-		return fallback
-	}
-	return raw == "true"
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketFallbackCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketFallbackCache, &s.openAICodexTicketFallbackSF, SettingKeyOpenAICodexTicketFallbackEnabled)
-}
-
-// GetOpenAICodexTicketFallbackModels 返回后台配置的兜底映射原文；空表示回退 yaml。
-func (s *SettingService) GetOpenAICodexTicketFallbackModels(ctx context.Context) string {
-	if s == nil {
-		return ""
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketFallbackMapCache, &s.openAICodexTicketFallbackMapSF, SettingKeyOpenAICodexTicketFallbackModels)
-	if !ok {
-		return ""
-	}
-	return raw
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketFallbackModelsCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketFallbackMapCache, &s.openAICodexTicketFallbackMapSF, SettingKeyOpenAICodexTicketFallbackModels)
-}
-
-// getOpenAICodexTicketIntSetting 读取一个整数型热设置；缺失、非法或校验不过回退 fallback。
-func (s *SettingService) getOpenAICodexTicketIntSetting(ctx context.Context, cache *atomic.Value, sf *singleflight.Group, key string, fallback int, validate func(int) error) int {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, cache, sf, key)
-	if !ok || raw == "" {
-		return fallback
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || (validate != nil && validate(n) != nil) {
-		return fallback
-	}
-	return n
-}
-
-// GetOpenAICodexTicketTTLSeconds 返回新票有效期（秒）；缺失回退 fallback（yaml，默认 3600）。
-func (s *SettingService) GetOpenAICodexTicketTTLSeconds(ctx context.Context, fallback int) int {
-	if s == nil {
-		return fallback
-	}
-	return s.getOpenAICodexTicketIntSetting(ctx, &s.openAICodexTicketTTLCache, &s.openAICodexTicketTTLSF, SettingKeyOpenAICodexTicketTTLSeconds, fallback, ValidateOpenAICodexTicketTTLSeconds)
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketTTLCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketTTLCache, &s.openAICodexTicketTTLSF, SettingKeyOpenAICodexTicketTTLSeconds)
-}
-
-// GetOpenAICodexTicketReharvestAfterSeconds 返回拿到票后继续打下一张的间隔（秒，0 关闭）。
-func (s *SettingService) GetOpenAICodexTicketReharvestAfterSeconds(ctx context.Context, fallback int) int {
-	if s == nil {
-		return fallback
-	}
-	return s.getOpenAICodexTicketIntSetting(ctx, &s.openAICodexTicketReharvestCache, &s.openAICodexTicketReharvestSF, SettingKeyOpenAICodexTicketReharvestAfterSeconds, fallback, ValidateOpenAICodexTicketReharvestAfterSeconds)
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketReharvestCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketReharvestCache, &s.openAICodexTicketReharvestSF, SettingKeyOpenAICodexTicketReharvestAfterSeconds)
-}
-
-// GetOpenAICodexTicketCookieEnabled 返回「随票复用 Cookie」开关；缺失回退 fallback（默认 true）。
-func (s *SettingService) GetOpenAICodexTicketCookieEnabled(ctx context.Context, fallback bool) bool {
-	if s == nil {
-		return fallback
-	}
-	raw, ok := s.getOpenAICodexTicketRawSetting(ctx, &s.openAICodexTicketCookieCache, &s.openAICodexTicketCookieSF, SettingKeyOpenAICodexTicketCookieEnabled)
-	if !ok || raw == "" {
-		return fallback
-	}
-	return raw == "true"
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketCookieCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.openAICodexTicketCookieCache, &s.openAICodexTicketCookieSF, SettingKeyOpenAICodexTicketCookieEnabled)
-}
-
-// GetUpstreamModelNotFoundCooldownSeconds 返回上游「模型不存在」冷却秒数（0 表示不冷却）。
-func (s *SettingService) GetUpstreamModelNotFoundCooldownSeconds(ctx context.Context, fallback int) int {
-	if s == nil {
-		return fallback
-	}
-	return s.getOpenAICodexTicketIntSetting(ctx, &s.upstreamModelNotFoundCooldownCache, &s.upstreamModelNotFoundCooldownSF, SettingKeyUpstreamModelNotFoundCooldownSeconds, fallback, ValidateUpstreamModelNotFoundCooldownSeconds)
-}
-
-func (s *SettingService) InvalidateUpstreamModelNotFoundCooldownCache() {
-	if s == nil {
-		return
-	}
-	invalidateOpenAICodexTicketSettingCache(&s.upstreamModelNotFoundCooldownCache, &s.upstreamModelNotFoundCooldownSF, SettingKeyUpstreamModelNotFoundCooldownSeconds)
-}
-
-type cachedOpenAICodexTicketHarvestProxy struct {
-	value     string
-	expiresAt int64
-}
-
-const openAICodexTicketHarvestProxyCacheTTL = 5 * time.Second
-
-// GetOpenAICodexTicketHarvestProxyURL 返回后台配置的 292 打票代理。空则调用方回退 yaml/env。
-func (s *SettingService) GetOpenAICodexTicketHarvestProxyURL(ctx context.Context) string {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if ctx.Err() != nil {
-		return ""
-	}
-	if s == nil || s.settingRepo == nil {
-		return ""
-	}
-	if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
-		if time.Now().UnixNano() < cached.expiresAt {
-			return cached.value
-		}
-	}
-	resultCh := s.openAICodexTicketHarvestProxySF.DoChan(SettingKeyOpenAICodexTicketHarvestProxyURL, func() (any, error) {
-		if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
-			if time.Now().UnixNano() < cached.expiresAt {
-				return cached.value, nil
-			}
-		}
-		dbCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		defer cancel()
-		value, err := s.settingRepo.GetValue(dbCtx, SettingKeyOpenAICodexTicketHarvestProxyURL)
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-		if err != nil && !errors.Is(err, ErrSettingNotFound) {
-			// Keep the last known proxy during transient storage failures.
-			if cached, ok := s.openAICodexTicketHarvestProxyCache.Load().(*cachedOpenAICodexTicketHarvestProxy); ok && cached != nil {
-				value = cached.value
-			}
-			s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{
-				value:     value,
-				expiresAt: time.Now().Add(time.Second).UnixNano(),
-			})
-			return value, nil
-		}
-		value = strings.TrimSpace(value)
-		s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{
-			value:     value,
-			expiresAt: time.Now().Add(openAICodexTicketHarvestProxyCacheTTL).UnixNano(),
-		})
-		return value, nil
-	})
-	select {
-	case <-ctx.Done():
-		return ""
-	case result := <-resultCh:
-		if v, ok := result.Val.(string); ok && result.Err == nil {
-			return v
-		}
-		return ""
-	}
-}
-
-func (s *SettingService) InvalidateOpenAICodexTicketHarvestProxyCache() {
-	if s == nil {
-		return
-	}
-	s.openAICodexTicketHarvestProxySF.Forget(SettingKeyOpenAICodexTicketHarvestProxyURL)
-	s.openAICodexTicketHarvestProxyCache.Store(&cachedOpenAICodexTicketHarvestProxy{expiresAt: 0})
-}
-
 // GetOpenAICodexUserAgent 返回 OpenAI Codex 上游请求使用的 User-Agent。
 // 后台设置优先；为空时回退到内置默认值。
 func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {
@@ -695,7 +339,7 @@ func (s *SettingService) GetOpenAICodexUserAgent(ctx context.Context) string {
 
 // GetOpenAICodexClientVersion 返回出站声明的 Codex 客户端版本号。
 // 优先级：管理员在面板覆写的版本 → 自动同步到的官方最新稳定版 → 内置常量。
-// 上游在容量紧张时按客户端身份分优先级降载，陈旧版本会被优先丢弃，故该值需保持跟随官方发布；
+// 上游会按客户端身份进行风控分层，陈旧版本可能被优先丢弃，故该值需保持跟随官方发布；
 // 自动同步让运维不必为了跟版本而发新版本。
 func (s *SettingService) GetOpenAICodexClientVersion(ctx context.Context) string {
 	fallback := codexCLIVersion
@@ -856,11 +500,11 @@ func (s *SettingService) InvalidateClaudeCodeClientVersionCache() {
 }
 
 // GetOpenAICodexCanonicalUserAgent 返回出站规范 Codex User-Agent。
-// 未填面板 UA 时按当前生效的客户端版本号拼出标准 Codex TUI UA。
+// 未填面板 UA 时按当前生效的客户端版本号拼出标准 Codex CLI UA。
 //
 // 面板 UA 只贡献客户端名与 OS / 架构 / 终端指纹，版本段一律用生效版本重建：该输入框是
 // 唯一能改 UA 后缀的地方，但它填写于某个历史版本，逐字沿用会把出站身份永久钉死在陈旧
-// 版本上并绕过自动同步——而陈旧身份正是上游优先降载的那一侧。
+// 版本上并绕过自动同步——而陈旧身份正是上游风控更严格的那一侧。
 // 需要固定版本请填「Codex 客户端版本号」并关闭自动同步。
 func (s *SettingService) GetOpenAICodexCanonicalUserAgent(ctx context.Context) string {
 	if s == nil {

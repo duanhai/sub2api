@@ -177,7 +177,7 @@ func TestAPIKeyQueueWebSocketDisconnectBeforeAdmission(t *testing.T) {
 	rdb := testutil.NewRedisClient(t)
 	svc := service.NewConcurrencyService(testutil.NewRedisConcurrencyCache(t, rdb))
 	var held func()
-	harness := newOpenAIWSPassthroughHandlerHarness(t, upstream.URL, func(h *OpenAIGatewayHandler, key *service.APIKey) {
+	harness := newOpenAIWSPassthroughHandlerHarness(t, upstream.URL, nil, func(h *OpenAIGatewayHandler, key *service.APIKey) {
 		key.ConcurrencyLimit = 1
 		svc.ConfigureAPIKeyQueues(map[string]config.APIKeyQueueConfig{strconv.FormatInt(key.ID, 10): {MaxWaiting: 3, TimeoutSeconds: 3}})
 		h.concurrencyHelper = NewConcurrencyHelper(svc, SSEPingFormatNone, time.Second)
@@ -218,7 +218,7 @@ func TestAPIKeyQueueWebSocketSecondTurnWaitsAndResumes(t *testing.T) {
 	defer upstream.Close()
 	rdb := testutil.NewRedisClient(t)
 	svc := service.NewConcurrencyService(testutil.NewRedisConcurrencyCache(t, rdb))
-	harness := newOpenAIWSPassthroughHandlerHarness(t, upstream.URL, func(h *OpenAIGatewayHandler, key *service.APIKey) {
+	harness := newOpenAIWSPassthroughHandlerHarness(t, upstream.URL, nil, func(h *OpenAIGatewayHandler, key *service.APIKey) {
 		key.ConcurrencyLimit = 1
 		svc.ConfigureAPIKeyQueues(map[string]config.APIKeyQueueConfig{strconv.FormatInt(key.ID, 10): {MaxWaiting: 3, TimeoutSeconds: 3}})
 		h.concurrencyHelper = NewConcurrencyHelper(svc, SSEPingFormatNone, time.Second)
